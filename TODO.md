@@ -556,7 +556,38 @@ Strictly ordered; each blocks the next.
   The log10 and per-(channel,frequency) robust z ARE correct and verified
   (B3b), so the existing data is sound, just unreduced.
 
-  **Two fixes, not exclusive:**
+  **FIX 1 DONE 2026-09-09:** `analysis_scripts/window_continuous_wavelets.py`
+  windows the existing files. Verified on NS127_02 english: mean/median/sd match
+  an independent recompute to float32 (4.8e-07), robust_median/sd carried
+  forward, z recovery exact (9.8e-07). **12.5 GB -> 25.3 MB in 393 s** (494x
+  reduction). Full set: 53 recordings, ~5.8 h.
+
+  Design decision — it stores windowed **log power**, not windowed z. The
+  z-scoring is an affine transform with constants fixed per (channel,
+  frequency), so it is exactly invertible and windowing commutes with it
+  (verified to 1e-15). Storing log power keeps absolute scale and leaves any
+  alternative normalisation available; z is recoverable in one line via the
+  carried-forward `robust_median`/`robust_sd`. Storing z would have frozen one
+  normalisation choice and pinned the grand mean at ~0, forcing every state
+  contrast to be symmetric about zero.
+
+  Also adds `frac_bad` per window from the 1 s QC files, so bad-data handling
+  becomes an analysis-time threshold rather than all-or-nothing rejection.
+  On NS127_02, 26 of 236 windows contain some artifact but none exceed 50%.
+
+  **STATISTICS CAVEAT baked into the output attrs:** windows are 10 s with a
+  2.5 s step, so 75% overlap. The 236 windows are NOT independent - a 599 s
+  recording holds 60 non-overlapping 10 s epochs. Use every 4th window
+  (stride 4 -> 59 observations) for statistics; all 236 for plotting. Treating
+  all 236 as independent inflates df ~4x and makes p-values anticonservative.
+  This applies to the OLD pipeline too, which uses the same grid.
+
+  **FIX 2 still open:** `wavelet_extract_windows.py` itself is unchanged, so
+  future runs will again produce unwindowed output. Allocate `pow_tf_log_z` at
+  `(n_channels, n_freqs, n_windows)` and average within
+  `window_starts`/`window_ends` before writing.
+
+  Original options as assessed:
   1. *Window the existing files* (cheap). The continuous z-scored data is
      verified; averaging within the window boundaries already stored in each
      file is a pure reduction. No need to re-read the 750 GB of Stage 1 raw TF
