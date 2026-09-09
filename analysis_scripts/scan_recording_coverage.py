@@ -85,6 +85,11 @@ FOOOF_GLOB    = os.path.join(DATA_ROOT, 'rolling_fooof_*{vid}*', '{pat}', '*.csv
 # filling the `include` column by hand.
 GAZE_MIN_PRESENT = 0.70
 
+# Downstream ground truth: the PC/attention-label stage output. Whichever
+# recordings appear here are the ones that actually reached the analyses.
+PCA_STAGE_DIR = os.path.join(DATA_ROOT, 'shared_PC_features_10s_20Apr26')
+PCA_STAGE_GLOB = os.path.join(PCA_STAGE_DIR, '*features_df*[[]0.6, 0.6[]]*.csv')
+
 # .fif suffixes that indicate a usable preprocessed/referenced recording
 PREPROC_MARKERS = ('referenced_avg', 'preprocessed', 'prep_ref_avg', 'referenced_wm')
 
@@ -139,6 +144,29 @@ def has_any(patterns, **kw):
     return any(_real(glob.glob(p.format(**kw))) for p in patterns)
 
 
+def load_pca_included():
+    """
+    Which recordings actually reached the PC / attention-label stage.
+
+    Read from that stage's own outputs rather than from any patient list,
+    because no script carries one - inclusion is implicit in which input files
+    happened to exist. Keys are (patient, session, run, video).
+    """
+    included = set()
+    for path in _real(glob.glob(PCA_STAGE_GLOB)):
+        vid = os.path.basename(path).split('_features_df')[0]
+        try:
+            df = pd.read_csv(path, usecols=['patient'])
+        except Exception:
+            continue
+        for key in df['patient'].astype(str).unique():
+            m = re.match(r'(.+?)_ses-([A-Za-z0-9]+)_run-([0-9]+)$', key)
+            if m:
+                included.add((m.group(1), m.group(2),
+                              f"{int(m.group(3)):02d}", vid))
+    return included
+
+
 def load_eye_quality():
     """
     Read the existing missing_data_{video}.csv eye-quality tables.
@@ -183,6 +211,7 @@ def load_eye_quality():
 
 def scan():
     eye = load_eye_quality()
+    pca_included = load_pca_included()
     records = {}
 
     for pat_dir in sorted(_real(glob.glob(os.path.join(PREP_DIR, '*')))):
@@ -233,6 +262,8 @@ def scan():
         rec['gaze_pass_70_post'] = _pass('right_present_post', 'left_present_post')
         rec['suggested_include'] = rec['gaze_pass_70']
 
+        rec['in_pca_stage'] = (pat, ses, run, vid) in pca_included
+
         rec['include'] = ''
         rec['exclude_reason'] = ''
         rec['exclude_modality'] = ''
@@ -243,6 +274,7 @@ def scan():
             'right_present', 'left_present',
             'right_present_post', 'left_present_post',
             'gaze_pass_70', 'gaze_pass_70_post', 'suggested_include',
+            'in_pca_stage',
             'include', 'exclude_reason', 'exclude_modality']
     df = pd.DataFrame(list(records.values()))
     return df.reindex(columns=cols).sort_values(['video', 'patient', 'session', 'run'])
@@ -267,4 +299,9 @@ if __name__ == '__main__':
     print()
     print(table.groupby('video')[
         ['has_preprocessed', 'has_wavelet', 'has_power_tier1',
-         'has_power_tier2', 'has_fooof']].sum().to_string())
+         'has_power_tier2', 'has_fooof', 'in_pca_stage']].sum().to_string())
+    print()
+    ex = table[table.in_pca_stage & (table.gaze_pass_70 == False)]
+    miss = table[(~table.in_pca_stage) & (table.gaze_pass_70 == True)]
+    print(f'included despite failing the {GAZE_MIN_PRESENT:.0%} rule : {len(ex)}')
+    print(f'passing the rule but not included                : {len(miss)}')

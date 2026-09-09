@@ -130,8 +130,43 @@ Strictly ordered; each blocks the next.
   NS190 and NS210 fail on ONE eye only — the per-eye rule catches asymmetry
   that an averaged-across-eyes rule would hide.
 
-  Remaining: settle the pre/post question, fill `include` by hand, then make
-  the pipeline scripts read this table instead of hand-edited patient lists.
+  Cross-referenced against what actually reached the PC/attention-label stage
+  (`shared_PC_features_10s_20Apr26/*features_df*[0.6, 0.6]*.csv`), now emitted
+  as `in_pca_stage`. **No script carries a patient list** — inclusion is purely
+  "whichever input files happened to exist."
+
+  Results: 18 english / 12 hungarian / 17 inscapes reached the PC stage.
+  - **4 included despite failing the 70% rule:** NS155_02 english (0.52/0.53),
+    NS190 english run-2 (0.76/0.54), NS153 inscapes (0.61/0.64),
+    NS210 inscapes (0.77/0.66).
+  - **17 pass the rule but never reached the PC stage**, several with excellent
+    gaze: NS201_02 english (0.98/0.93), NS204 english (0.85/0.98),
+    LH010 hungarian (0.93/0.93), NS155/NS155_02 hungarian (0.92/0.93).
+  - **[?] NS190 english: the WORSE run was included.** run-1 (0.887/0.889,
+    passes, has wavelet) is absent; run-2 (0.762/0.538, fails on the left eye)
+    is in. Looks like an error rather than a judgement call — worth checking.
+
+  Remaining: settle the pre/post question, resolve NS190, fill `include` by
+  hand, then make the pipeline scripts read this table.
+
+- [ ] **A7. `movie_subs_master_updated.csv` is MISSING from this drive.**
+  Seven scripts load it —
+  `robust_pca_gaze_features.py`, `compute_eye_measures.py` (both copies),
+  `prePCA_agg_norm.py`, `plot_the_present.py`,
+  `plot_elec_anatomy_attn_effects.py`, `compute_norm_eye_features_4Jan26.py` —
+  all at `/Volumes/Samsung/anatomy/shared_correspondence/movie_subs_master_updated.csv`.
+  The whole `anatomy/` tree is absent here; it lived on the Mac.
+  **Those scripts cannot run on this machine as-is**, which likely explains why
+  parts of the eye branch have not been re-run on the new data.
+  `Movie_data/data/movie_subs_table.xlsx` is NOT a substitute — it is a
+  contact-level anatomy table (6328 electrodes x 56 cols), not a
+  recording-level table.
+  *Blocks A4 (eye-pipeline cleanup) and the whole eye branch. Locate it on the
+  Mac and copy it across, or reconstruct what it provided.*
+
+  Note for A6: that xlsx is a THIRD source of channel metadata, carrying its own
+  `AparcAseg_Atlas` / `DK_Atlas` / `Y7_Atlas` / `Y17_Atlas` columns alongside the
+  correspondence sheets and the wavelet-side channel_metadata.csv.
   Re-running never clobbers annotations; it writes `_rescan.csv` alongside.
 
 - [ ] **A5b. Original (superseded) item: inclusion/exclusion logging.** Which recordings are in or out, and
