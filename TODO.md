@@ -41,6 +41,48 @@ These change what goes into Stage 1. Getting them wrong means re-extracting.
   `save_with_bad_chans.py` is genuinely backfill-only. Christine believes this
   is true; not yet verified against the new data.
 
+- [~] **A11. Full-spectrum wavelet re-extraction.** IN PROGRESS.
+  Replaces the original grid (linear 2 Hz, fixed nc=5, 600 Hz) with a single
+  log-spaced extraction: **100 freqs 0.5-151 Hz, n_cycles log-ramped 3 -> 15,
+  decim 6 (stored at 100 Hz)**. See `src/wavelet_grid.py`.
+
+  Decided to do this as ONE extraction rather than a low-frequency patch plus
+  the existing high-frequency data. Doing it in two would have meant two
+  parameter sets, two sample rates (100 vs 600 Hz), a splice rule at 30 Hz, and
+  concatenation only being possible after windowing.
+
+  | band | old freqs / coverage / leakage | new |
+  |---|---|---|
+  | sub-delta 0.5-1 | 1 / 40% / 50% | 13 / 100% / 48% |
+  | delta 1-3 | 2 / 40% / 50% | 19 / 100% / 31% |
+  | theta 4-7 | 2 / 100% / 41% | 9 / 100% / 33% |
+  | alpha 8-13 | 3 / 100% / 44% | 8 / 100% / 32% |
+  | beta 14-30 | 8 / 100% / 32% | 13 / 100% / 18% |
+  | gamma 31-50 | 10 / 100% / 46% | 8 / 100% / 22% |
+  | HFA 51-150 | 50 / 100% / 30% | 18 / 100% / **6%** |
+
+  **Better in every band AND 4.6x smaller**: 15.84 -> 3.47 GB per recording,
+  ~174 GB for 50 against ~792 GB now.
+
+  **Decimation is only valid because of the log n_cycles ramp.** Power envelope
+  bandwidth equals filter bandwidth, so the worst case is 40.3 Hz at 151 Hz
+  (nc=15) and 100 Hz gives 2.5x margin. Verified empirically with a 25 Hz
+  amplitude modulation: 99% of envelope power below 25 Hz, only 0.0026% above
+  the 50 Hz Nyquist. With the ORIGINAL nc=5 the same wavelet is 60 Hz wide,
+  needs >=121 Hz, and puts 0.35% above that Nyquist - 130x more. MNE's `decim`
+  is plain slicing with no anti-alias filter, so that would have aliased.
+
+  Also caught during patching: `n_times` was taken from the raw sample count,
+  which with decim would have allocated every array 6x too large with 5/6 left
+  as zeros - silently, since nothing would error.
+
+  Patient lists: english 19, inscapes 13, hungarian 18 (15 had been commented
+  out from a previous run and were restored). **50 recordings total.**
+
+  Remaining: verify the single-recording test, then run all 50. Supersedes the
+  original extraction entirely - do not mix, n_cycles differs at every
+  frequency.
+
 ## B. Critical path — completing the pipeline
 
 Strictly ordered; each blocks the next.
@@ -273,6 +315,48 @@ Strictly ordered; each blocks the next.
   12 Stage 1 HDF5 files but only **2** carrying derived Stage 2 output, versus
   english 22/24 and hungarian 18/19. Either the derivation has not been run for
   inscapes or it failed partway.
+
+- [~] **A11. Full-spectrum wavelet re-extraction.** IN PROGRESS.
+  Replaces the original grid (linear 2 Hz, fixed nc=5, 600 Hz) with a single
+  log-spaced extraction: **100 freqs 0.5-151 Hz, n_cycles log-ramped 3 -> 15,
+  decim 6 (stored at 100 Hz)**. See `src/wavelet_grid.py`.
+
+  Decided to do this as ONE extraction rather than a low-frequency patch plus
+  the existing high-frequency data. Doing it in two would have meant two
+  parameter sets, two sample rates (100 vs 600 Hz), a splice rule at 30 Hz, and
+  concatenation only being possible after windowing.
+
+  | band | old freqs / coverage / leakage | new |
+  |---|---|---|
+  | sub-delta 0.5-1 | 1 / 40% / 50% | 13 / 100% / 48% |
+  | delta 1-3 | 2 / 40% / 50% | 19 / 100% / 31% |
+  | theta 4-7 | 2 / 100% / 41% | 9 / 100% / 33% |
+  | alpha 8-13 | 3 / 100% / 44% | 8 / 100% / 32% |
+  | beta 14-30 | 8 / 100% / 32% | 13 / 100% / 18% |
+  | gamma 31-50 | 10 / 100% / 46% | 8 / 100% / 22% |
+  | HFA 51-150 | 50 / 100% / 30% | 18 / 100% / **6%** |
+
+  **Better in every band AND 4.6x smaller**: 15.84 -> 3.47 GB per recording,
+  ~174 GB for 50 against ~792 GB now.
+
+  **Decimation is only valid because of the log n_cycles ramp.** Power envelope
+  bandwidth equals filter bandwidth, so the worst case is 40.3 Hz at 151 Hz
+  (nc=15) and 100 Hz gives 2.5x margin. Verified empirically with a 25 Hz
+  amplitude modulation: 99% of envelope power below 25 Hz, only 0.0026% above
+  the 50 Hz Nyquist. With the ORIGINAL nc=5 the same wavelet is 60 Hz wide,
+  needs >=121 Hz, and puts 0.35% above that Nyquist - 130x more. MNE's `decim`
+  is plain slicing with no anti-alias filter, so that would have aliased.
+
+  Also caught during patching: `n_times` was taken from the raw sample count,
+  which with decim would have allocated every array 6x too large with 5/6 left
+  as zeros - silently, since nothing would error.
+
+  Patient lists: english 19, inscapes 13, hungarian 18 (15 had been commented
+  out from a previous run and were restored). **50 recordings total.**
+
+  Remaining: verify the single-recording test, then run all 50. Supersedes the
+  original extraction entirely - do not mix, n_cycles differs at every
+  frequency.
 
 ## B. Critical path — completing the pipeline
 
