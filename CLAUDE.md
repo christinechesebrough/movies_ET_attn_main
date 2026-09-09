@@ -413,6 +413,40 @@ Both script directories are active. The eye-tracking branch joins the iEEG
 pipeline at **Tier 4** (`*_power_eye_merged.csv`), where eye features, PCs and
 Mahalanobis group deviation are merged onto long-format windowed power.
 
+## Paths: use src/paths.py
+
+**Never hardcode absolute paths.** `src/paths.py` resolves them (TODO E2).
+
+```python
+from paths import MOVIE_DATA, ANATOMY, CORR_SHEETS, find, wavelet_raw_tf
+d = find('wavelet_continuous_z')          # searches every root
+s1 = wavelet_raw_tf('despicable_me_english')
+```
+`python3 src/paths.py` prints what resolved where.
+
+Data is split across two drives, **per resource, not per tree** — there is a
+`Movie_data` on both:
+
+```
+/media/christine/Samsung/Movie_data     1.9T, 95% FULL, 107G free
+    movies_prep_standard        CURRENT (49 patients, newest 2026-09-08)
+    full_raw_log_power_*, windowed_power_*, rolling_fooof_*,
+    shared_PC_features_*, movies_bad_windows, data/
+
+/media/christine/Data/Movie_data        11T, 6.6T free
+    wavelet_*_26Aug26/          Stage 1 raw TF HDF5   750 G
+    wavelet_continuous_z/       Stage 2               612 G
+    wavelet_band_power/         Stage 2                38 G
+    movies_prep_standard        STALE 2024 copy (25 patients) - DO NOT USE
+
+/media/christine/Data/anatomy           FreeSurfer tree + shared_correspondence
+```
+
+New wavelet output goes to the Data drive because single files are 9-27 GB and
+the set is ~1.4 TB. It cannot fit on Samsung. A `/Volumes/Samsung` ->
+`/media/christine/Samsung` rewrite silently breaks both the anatomy and wavelet
+paths — resolve per resource instead.
+
 ## Git setup
 
 - `origin` -> personal repo (`christinechesebrough/movies_ET_attn_main`) — **work here**
@@ -429,9 +463,10 @@ canonical is an open scientific question. <!-- VERIFY -->
 
 ## Known issues
 
-- **39 of 55 scripts hardcode absolute paths**, split across two machines
-  (`/Users/christinechesebrough/...` Mac, `/media/christine/Samsung/...` Linux,
-  plus a stale `/Volumes/Samsung`). Only urgent if running off this laptop.
+- **39 of 55 scripts hardcode absolute paths** (`/Users/christinechesebrough/...`,
+  `/Volumes/Samsung/...`, `/media/christine/Samsung/...`). `src/paths.py` now
+  exists; migrate scripts to it as they are touched. Seven scripts reference
+  `/Volumes/Samsung/anatomy/` — that content is on the **Data** drive.
 - `label_bad_windows_continous.py` is misspelled (missing `u` in
   "continuous"). Worth renaming before it gets imported or referenced widely.
 - `review_power` has **no file extension** and no `.py` twin — it is the only

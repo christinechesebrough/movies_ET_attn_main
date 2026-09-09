@@ -44,7 +44,10 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 # PATHS
 # ---------------------------------------------------------------------------
-CORR_DIR = '/media/christine/Samsung/Movie_data/data/movie_elec_corr_sheets'
+try:
+    from paths import CORR_SHEETS as CORR_DIR
+except ImportError:                      # standalone use without src on path
+    CORR_DIR = '/media/christine/Samsung/Movie_data/data/movie_elec_corr_sheets'
 
 # ---------------------------------------------------------------------------
 # LABEL VOCABULARIES

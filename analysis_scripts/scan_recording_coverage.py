@@ -58,7 +58,11 @@ import pandas as pd
 # =============================================================================
 # PARAMETERS
 # =============================================================================
-DATA_ROOT   = '/media/christine/Samsung/Movie_data'
+import sys
+_src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'src')
+if _src not in sys.path:
+    sys.path.insert(0, _src)
+from paths import MOVIE_DATA as DATA_ROOT, DATA_ROOTS   # centralized paths (E2)
 OUT_PATH    = os.path.join(DATA_ROOT, 'recording_coverage.csv')
 
 # Videos of interest, with the filename aliases each one appears under.
@@ -72,9 +76,25 @@ PREP_DIR      = os.path.join(DATA_ROOT, 'movies_prep_standard')
 BAD_WIN_DIR   = os.path.join(DATA_ROOT, 'movies_bad_windows')
 # Wavelet outputs live in two places: under wavelet_power_*/ and, for the
 # 21Apr26 runs, as top-level wavelet_{vid}_* directories.
+# Wavelet outputs are split across drives: the old npz-era runs under
+# wavelet_power_*/ on Samsung, the current HDF5 runs as top-level
+# wavelet_{vid}_*_26Aug26/ on the Data drive. Search every root.
 WAVELET_GLOBS = [
-    os.path.join(DATA_ROOT, 'wavelet_power_*', 'wavelet_{vid}_*', '{pat}', '*'),
-    os.path.join(DATA_ROOT, 'wavelet_{vid}_*', '{pat}', '*'),
+    os.path.join(r, sub) for r in DATA_ROOTS for sub in (
+        os.path.join('wavelet_power_*', 'wavelet_{vid}_*', '{pat}', '*'),
+        os.path.join('wavelet_{vid}_*', '{pat}', '*'),
+    )
+]
+# Current-format Stage 1 output specifically (.h5, not the superseded .npz)
+WAVELET_H5_GLOBS = [
+    os.path.join(r, 'wavelet_{vid}_*', '{pat}', '*.h5') for r in DATA_ROOTS
+]
+WAVELET_DERIVED_GLOBS = [
+    os.path.join(r, d, '*{vid}*', '*{pat}*') for r in DATA_ROOTS
+    for d in ('wavelet_band_power', 'wavelet_continuous_z')
+] + [
+    os.path.join(r, d, '{vid}', '*{pat}*') for r in DATA_ROOTS
+    for d in ('wavelet_band_power', 'wavelet_continuous_z')
 ]
 TIER1_GLOB    = os.path.join(DATA_ROOT, 'full_raw_log_power_*', 'power_log_*_{vid}_*', '{pat}', '*.csv')
 TIER2_GLOB    = os.path.join(DATA_ROOT, 'windowed_power_*', '*_{vid}_*', '{pat}', '*.csv')
@@ -239,6 +259,8 @@ def scan():
         rec['has_bad_windows'] = len(_real(glob.glob(
             os.path.join(BAD_WIN_DIR, pat, f'*{vid}*qc*.csv')))) > 0
         rec['has_wavelet']     = has_any(WAVELET_GLOBS, vid=vid, pat=pat)
+        rec['has_wavelet_h5']  = has_any(WAVELET_H5_GLOBS, vid=vid, pat=pat)
+        rec['has_wavelet_derived'] = has_any(WAVELET_DERIVED_GLOBS, vid=vid, pat=pat)
         rec['has_power_tier1'] = has_any(TIER1_GLOB,   vid=vid, pat=pat)
         rec['has_power_tier2'] = has_any(TIER2_GLOB,   vid=vid, pat=pat)
         rec['has_fooof']       = has_any(FOOOF_GLOB,   vid=vid, pat=pat)
@@ -270,7 +292,8 @@ def scan():
 
     cols = ['patient', 'session', 'video', 'run',
             'has_preprocessed', 'has_bad_channels', 'has_bad_windows',
-            'has_wavelet', 'has_power_tier1', 'has_power_tier2', 'has_fooof',
+            'has_wavelet', 'has_wavelet_h5', 'has_wavelet_derived',
+            'has_power_tier1', 'has_power_tier2', 'has_fooof',
             'right_present', 'left_present',
             'right_present_post', 'left_present_post',
             'gaze_pass_70', 'gaze_pass_70_post', 'suggested_include',
@@ -298,8 +321,9 @@ if __name__ == '__main__':
     print(f'Wrote {len(table)} recordings to {out}')
     print()
     print(table.groupby('video')[
-        ['has_preprocessed', 'has_wavelet', 'has_power_tier1',
-         'has_power_tier2', 'has_fooof', 'in_pca_stage']].sum().to_string())
+        ['has_preprocessed', 'has_wavelet', 'has_wavelet_h5',
+         'has_wavelet_derived', 'has_power_tier2', 'has_fooof',
+         'in_pca_stage']].sum().to_string())
     print()
     ex = table[table.in_pca_stage & (table.gaze_pass_70 == False)]
     miss = table[(~table.in_pca_stage) & (table.gaze_pass_70 == True)]

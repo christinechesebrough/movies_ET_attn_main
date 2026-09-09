@@ -170,12 +170,17 @@ Strictly ordered; each blocks the next.
   A naive `/Volumes/Samsung` -> `/media/christine/Samsung` substitution silently
   breaks every anatomy path. The path config must map per resource.
 
-- [ ] **A8. Disk space before the full wavelet extraction.**
-  `/media/christine/Samsung` (holds `Movie_data`) is **95% full, 107 GB free**.
-  `/media/christine/Data` has 6.6 TB free. Saving full continuous wavelets is
-  the whole point of the refactor and is far larger than the old windowed
-  outputs - check the projected size against 107 GB before running, and
-  consider targeting the Data drive.
+- [x] **A8. Disk space.** RESOLVED — new wavelet output already targets the
+  Data drive (6.6 TB free). Current footprint 1.4 TB: Stage 1 raw TF 750 G
+  (english 318 G / hungarian 252 G / inscapes 180 G), wavelet_continuous_z
+  612 G, wavelet_band_power 38 G. Single files run 9-27 GB.
+  Samsung remains at 95% full / 107 GB free — do not write new large outputs
+  there.
+
+- [ ] **A9. inscapes is behind on Stage 2.** Coverage scan shows inscapes with
+  12 Stage 1 HDF5 files but only **2** carrying derived Stage 2 output, versus
+  english 22/24 and hungarian 18/19. Either the derivation has not been run for
+  inscapes or it failed partway.
 
 ## B. Critical path — completing the pipeline
 
@@ -376,9 +381,14 @@ Strictly ordered; each blocks the next.
   43). Highest-leverage documentation work: it makes the pipeline map derivable
   from code instead of separately maintained, so it cannot silently drift.
   Do the ~15 active pipeline scripts first, not all 43.
-- [ ] **E2. Single path config.** 39 of 55 scripts hardcode absolute paths
-  across two machines plus a stale `/Volumes/Samsung`.
-  *Only urgent if running off this laptop.*
+- [~] **E2. Single path config.** DONE: `src/paths.py`. Resolves roots by
+  probing candidates, searches all roots per resource via `find()`, and
+  `wavelet_raw_tf(vid)` picks the current HDF5 run by mtime rather than by the
+  date-stamp string (which does not sort chronologically). Env overrides:
+  `MOVIES_DATA_ROOT`, `MOVIES_ANATOMY_ROOT`. `python3 src/paths.py` reports.
+  Adopted by `src/channel_metadata.py` and `scan_recording_coverage.py`.
+  Remaining: migrate the 39 scripts as they are touched. No existing script has
+  been modified.
 - [ ] **E3. Make `src/` importable** via `pyproject.toml` + `pip install -e .`.
   Removes `sys.path` hacks from ~16 scripts **with zero edits to import lines**,
   because the bare module names stay valid. Cheapest structural win available.
