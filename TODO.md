@@ -50,7 +50,42 @@ Strictly ordered; each blocks the next.
   documented long format with `Is_Bad_Window` / `Window_Start_Sec` columns was
   inferred and wrong; no such columns exist.
 
-- [ ] **B2. Write the Stage 3 bridge** (`wavelet_windows_to_csv.py`).
+- [x] **B2. Stage 3 bridge — DONE.**
+  `analysis_scripts/wavelet_windows_to_csv.py`. Reads
+  `wavelet_band_power/{vid}/{band}/{pat}/*_log_band_power.h5`, applies the
+  identical rolling-mean windowing as `lowpass_power_to_windows.py`
+  (6000-sample windows, 1500-sample step @ 600 Hz), joins the five atlas
+  metadata rows via `src/channel_metadata.py`, and writes Tier 2 wide CSV.
+  Verified on NS127_02 english gamma: **241 rows x same structure as the old
+  Tier 2 file, exact window-count match (236 windows + 5 metadata rows).**
+  `SOURCE='log_band_power'` reproduces old Tier 2 (unnormed rolling mean);
+  `SOURCE='robust_z'` reads the pre-z-scored file instead and is NOT comparable
+  to old outputs.
+
+- [~] **B3. Validation — FIRST RESULT (NS127_02, english, gamma).**
+  Wavelet-derived vs Hilbert/bandpass band power, same recording, same windows:
+
+  | measure | value |
+  |---|---|
+  | global r | 0.981 (inflated by between-channel variance) |
+  | **per-channel median r** | **0.840** (range 0.68-0.98; 114/145 below 0.9) |
+  | slope, new = a*old + b | **3.33** (a=1 would be a pure units offset) |
+  | SD | old 0.12, new 0.41 |
+  | r after per-channel z-scoring | 0.839 |
+
+  **Not interchangeable.** ~30% unshared variance within-channel. The slope of
+  3.33 means the wavelet-derived power has ~3.3x the dynamic range, so this is
+  a genuine methodological difference, not scaling.
+  **Hypothesis (UNVERIFIED):** the old chain low-pass filtered the power
+  timecourse before windowing - the script is named
+  `lowpass_power_to_windows.py` - which would compress its variance. Check the
+  filtering code before accepting this explanation.
+  Also: the new extraction has **145 channels vs the old 147** for this
+  recording (missing RDh15, RDh16) - worth understanding.
+  Remaining: repeat across bands, recordings and videos before drawing a
+  conclusion. One recording x one band is not a validation.
+
+- [ ] **B2-OLD (superseded). Write the Stage 3 bridge** (`wavelet_windows_to_csv.py`).
   Reads `wavelet_extract_windows.py` HDF5 → emits **Tier 2**: wide CSV, one
   file per band, electrodes as columns, five atlas metadata rows prepended
   (`DK_Atlas_Region`, `Y7_Atlas_Region`, `Y17_Atlas_Region`,
@@ -191,7 +226,42 @@ Strictly ordered; each blocks the next.
   documented long format with `Is_Bad_Window` / `Window_Start_Sec` columns was
   inferred and wrong; no such columns exist.
 
-- [ ] **B2. Write the Stage 3 bridge** (`wavelet_windows_to_csv.py`).
+- [x] **B2. Stage 3 bridge — DONE.**
+  `analysis_scripts/wavelet_windows_to_csv.py`. Reads
+  `wavelet_band_power/{vid}/{band}/{pat}/*_log_band_power.h5`, applies the
+  identical rolling-mean windowing as `lowpass_power_to_windows.py`
+  (6000-sample windows, 1500-sample step @ 600 Hz), joins the five atlas
+  metadata rows via `src/channel_metadata.py`, and writes Tier 2 wide CSV.
+  Verified on NS127_02 english gamma: **241 rows x same structure as the old
+  Tier 2 file, exact window-count match (236 windows + 5 metadata rows).**
+  `SOURCE='log_band_power'` reproduces old Tier 2 (unnormed rolling mean);
+  `SOURCE='robust_z'` reads the pre-z-scored file instead and is NOT comparable
+  to old outputs.
+
+- [~] **B3. Validation — FIRST RESULT (NS127_02, english, gamma).**
+  Wavelet-derived vs Hilbert/bandpass band power, same recording, same windows:
+
+  | measure | value |
+  |---|---|
+  | global r | 0.981 (inflated by between-channel variance) |
+  | **per-channel median r** | **0.840** (range 0.68-0.98; 114/145 below 0.9) |
+  | slope, new = a*old + b | **3.33** (a=1 would be a pure units offset) |
+  | SD | old 0.12, new 0.41 |
+  | r after per-channel z-scoring | 0.839 |
+
+  **Not interchangeable.** ~30% unshared variance within-channel. The slope of
+  3.33 means the wavelet-derived power has ~3.3x the dynamic range, so this is
+  a genuine methodological difference, not scaling.
+  **Hypothesis (UNVERIFIED):** the old chain low-pass filtered the power
+  timecourse before windowing - the script is named
+  `lowpass_power_to_windows.py` - which would compress its variance. Check the
+  filtering code before accepting this explanation.
+  Also: the new extraction has **145 channels vs the old 147** for this
+  recording (missing RDh15, RDh16) - worth understanding.
+  Remaining: repeat across bands, recordings and videos before drawing a
+  conclusion. One recording x one band is not a validation.
+
+- [ ] **B2-OLD (superseded). Write the Stage 3 bridge** (`wavelet_windows_to_csv.py`).
   Reads `wavelet_extract_windows.py` HDF5 → emits **Tier 2**: wide CSV, one
   file per band, electrodes as columns, five atlas metadata rows prepended
   (`DK_Atlas_Region`, `Y7_Atlas_Region`, `Y17_Atlas_Region`,
