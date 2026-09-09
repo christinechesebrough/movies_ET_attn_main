@@ -422,3 +422,60 @@ Listed so they stop being re-proposed:
 5. **E1** — as each script is touched for another reason, add its header.
 6. **D1, D2** — before writing the paper's methods section, since neither the
    eye-tracking branch nor the attention-label provenance is currently documented.
+
+---
+
+## G. Directory organization
+
+The layout is genuinely disorganized, but the expensive fix (relocating ~2.8 TB)
+is the low-value half. `src/paths.py` already removes the need for scripts to
+know where anything lives. What is worth doing, cheapest first:
+
+- [ ] **G1. Delete the duplicated 2024 snapshot on the Data drive — 374 GB.**
+  `Data/Movie_data/movies_nwb_standard` (198 GB) and
+  `Data/Movie_data/movies_prep_standard` (176 GB) are **strict subsets** of the
+  Samsung copies: 0 entries present on Data and absent on Samsung (verified
+  2026-09-09 by top-level entry name, NOT by file content — confirm before
+  deleting, e.g. `diff <(cd A && find . -type f | sort) <(cd B && find . -type f | sort)`).
+  Deleting them also removes the trap where a path resolving to the Data drive
+  silently yields 25 patients instead of 49, with no error.
+
+- [ ] **G2. Move the rest of the 2024 material into `_archive/`.**
+  ~57 GB of dirs unique to the Data drive whose newest file is 2024:
+  `both_movies_extract` 13 G, `movie_prep_good_ET_2` 27 G,
+  `movies_nwb_good_ET` 22 G, `ET_prep` 2.2 G, `movies_task` 888 M,
+  plus ~40 small `*_test_*`, `*_24Jul24`, `alpha_all_*`, `HFA_all_*`,
+  `new_verg*`, `networks_test_*` directories.
+  Moving into `Movie_data/_archive/` is reversible and nothing references them.
+  Do NOT delete outright — some are the only copy.
+
+- [ ] **G3. Adopt a convention for NEW outputs only.**
+  Do not rename existing directories: 39 scripts hardcode paths and renaming
+  mid-analysis will break them silently. Instead fix the shape going forward:
+
+  ```
+  <root>/Movie_data/
+      raw/            nwb, rawdata_for_conversion
+      preprocessed/   movies_prep_standard
+      wavelet/        {vid}/          Stage 1 raw TF HDF5
+      derived/        band_power/ continuous_z/   Stage 2
+      tabular/        tier2/ tier3/ tier4/        CSVs
+      results/        figures, stats
+      _archive/       superseded output
+  ```
+
+  Naming rules for new output directories:
+    - no date stamps in directory names — the filesystem records mtime, and
+      `_21Apr26` vs `_26Aug26` does not sort chronologically as a string
+      (this already caused a wrong-directory bug in `paths.py`)
+    - no parentheses or spaces — `tf_10s_(1, 150)` is awkward to glob and
+      quote; use `tf_10s_f1-150`
+    - parameters that identify a *variant* belong in the name; parameters that
+      identify a *run* belong in a sidecar metadata file
+
+- [ ] **G4. Settle which drive owns what, then record it in `paths.py`.**
+  Current de facto split, which is defensible on size grounds:
+    Samsung (107 GB free) — legacy power pipeline, raw/nwb, prep, PC features
+    Data (6.6 TB free)    — all new wavelet output, anatomy
+  Samsung being 95% full means new large output must go to Data regardless.
+  The decision to record is whether Samsung eventually becomes archive-only.
