@@ -17,7 +17,8 @@ Research code for an in-progress paper.
 - Reusable functions live in `src/`. Scripts import them by bare module name
   (`from eeg_preproc_helpers import ...`) via `sys.path` manipulation.
 
-Working backlog with dependencies and ordering: **`TODO.md`**.
+Full pipeline structure — four pipelines, shared front-end, known weaknesses:
+**`PIPELINE.md`**. Working backlog with dependencies and ordering: **`TODO.md`**.
 
 ## Current state (as of 2026-09-09)
 
@@ -319,7 +320,16 @@ complementary, not alternatives:
 | writes | `mask`, `mask_padded`, `bad_overlap_sec` | `bad_channels` txt + QC CSV |
 | position | after extraction | **before** extraction |
 
-Marking before the wavelet transform is the more defensible default here:
+**Current behaviour (Christine, 2026-09-09): bad windows are INCLUDED in
+wavelet extraction and in subsequent norming/windowing.** They are filtered only
+later — from statistical grouping in the power pipeline and from plotting in the
+spectrogram pipeline. So marking exists; exclusion at extraction does not.
+Whether that is right is an open question (PIPELINE.md).
+
+An earlier draft of this file asserted that marking happens before the transform.
+That was wrong.
+
+Argument for excluding earlier:
 Morlet convolution smears a transient across roughly +/- n_cycles/f seconds, so
 masking windows post hoc hides the window the artifact sat in without removing
 the contamination that leaked into its neighbours. Cost: manual marking does not

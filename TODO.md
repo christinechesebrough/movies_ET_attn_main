@@ -9,6 +9,8 @@ Status: `[ ]` open · `[~]` in progress · `[x]` done · `[?]` needs a decision
 
 ---
 
+Full pipeline structure: **`PIPELINE.md`**.
+
 ## A. Upstream decisions — settle BEFORE the final extraction run
 
 These change what goes into Stage 1. Getting them wrong means re-extracting.
@@ -95,6 +97,21 @@ Strictly ordered; each blocks the next.
 
 - [ ] **B5. Run Stage 4 unchanged** on the new data.
   *Blocked by B3 and B4.*
+
+- [ ] **A5. Inclusion/exclusion logging.** Which recordings are in or out, and
+  why (iEEG quality vs eye-tracking quality), is not recorded anywhere — it is
+  implicit in hand-edited patient lists per step. Effective N is not recoverable
+  from outputs, and steps can silently run on different subject sets.
+  Wanted: one per-recording inclusion table (patient/session/run/video,
+  included, reason, failing modality) written once and read everywhere.
+  *Cross-cutting; affects every pipeline and every reported N.*
+
+- [ ] **A6. Canonical channel-metadata access.** Atlas/channel metadata comes
+  from each patient's electrode correspondence sheet but is imported
+  inconsistently across preprocessing, analysis and plotting steps. Wanted: one
+  canonical per-recording channel table plus a single accessor.
+  `*_channel_metadata.csv` beside the wavelet outputs is the obvious candidate.
+  *Cross-cutting. Also unblocks B2, which needs these rows.*
 
 ## C. Correctness fixes — small, do when convenient
 
