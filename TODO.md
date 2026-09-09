@@ -98,7 +98,22 @@ Strictly ordered; each blocks the next.
 - [ ] **B5. Run Stage 4 unchanged** on the new data.
   *Blocked by B3 and B4.*
 
-- [ ] **A5. Inclusion/exclusion logging.** Which recordings are in or out, and
+- [~] **A5. Inclusion/exclusion logging.** SCAFFOLD DONE.
+  `analysis_scripts/scan_recording_coverage.py` walks the data tree and writes
+  `Movie_data/recording_coverage.csv`: one row per (patient, session, video,
+  run) with has_preprocessed / bad_channels / bad_windows / wavelet /
+  power_tier1 / power_tier2 / fooof, plus eye-quality metrics joined from the
+  existing `missing_data_{video}.csv` tables.
+  First run: **87 recordings, 39 patients.** Attrition 87 preprocessed -> 54
+  wavelet -> 47 tier2 -> 29 fooof; **33 recordings are preprocessed with no
+  downstream output at all.**
+  The `include` / `exclude_reason` / `exclude_modality` columns are left BLANK
+  by design — file presence records what was processed, never what should be.
+  Remaining: fill those in by hand, then make the pipeline scripts read this
+  table instead of hand-edited patient lists.
+  Re-running never clobbers annotations; it writes `_rescan.csv` alongside.
+
+- [ ] **A5b. Original (superseded) item: inclusion/exclusion logging.** Which recordings are in or out, and
   why (iEEG quality vs eye-tracking quality), is not recorded anywhere — it is
   implicit in hand-edited patient lists per step. Effective N is not recoverable
   from outputs, and steps can silently run on different subject sets.

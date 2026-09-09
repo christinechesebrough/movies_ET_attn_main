@@ -90,6 +90,12 @@ hand-edited patient lists at each step, so:
 included Y/N, reason, which modality failed), written once and read by every
 step instead of hand-maintained lists.
 
+**Scaffold built (2026-09-09):** `analysis_scripts/scan_recording_coverage.py`
+-> `Movie_data/recording_coverage.csv`. 87 recordings across 39 patients, with
+per-stage presence flags and eye-quality metrics joined in. The include/exclude
+columns are blank pending Christine's judgement. Not yet consumed by any
+pipeline script.
+
 ### 2. Channel metadata access is inconsistent
 
 Atlas and other channel metadata originates in each patient's **electrode
