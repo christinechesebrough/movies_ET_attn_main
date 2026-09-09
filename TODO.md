@@ -106,7 +106,28 @@ Strictly ordered; each blocks the next.
   included, reason, failing modality) written once and read everywhere.
   *Cross-cutting; affects every pipeline and every reported N.*
 
-- [ ] **A6. Canonical channel-metadata access.** Atlas/channel metadata comes
+- [~] **A6. Canonical channel-metadata access.** IN PROGRESS.
+  Done: `src/channel_metadata.py` — reads the correspondence sheets
+  (`Movie_data/data/movie_elec_corr_sheets/`, 106 sheets, 48 cols) and emits
+  normalized `label / DK_Atlas / Y7_Atlas / Y17_Atlas / AparcAseg_Atlas /
+  network` plus quality flags. Verified against NS127_02's existing
+  channel_metadata.csv: DK, Y7 and Y17 all match 100%.
+  Consolidates a Yeo mapping that was duplicated across 9 scripts, and three
+  competing Y7 vocabularies (raw codes / short names / long names) - all three
+  retained as explicit maps.
+  Remaining: adopt it in scripts as they are touched for other reasons. No
+  existing script has been modified.
+
+  **BUG FOUND — `AparcAseg_Atlas` is mispopulated in ALL 76 wavelet-side
+  `*_channel_metadata.csv` files.** It holds a verbatim copy of `Y7_Atlas`
+  (Yeo-7 network names) instead of FreeSurfer regions. The Tier 1/2 power CSVs
+  are CORRECT (`Right-Amygdala`, `Right-Cerebral-White-Matter`), so the old
+  power pipeline is unaffected - the fault is in whatever wrote the wavelet-side
+  metadata. **B2 must not source atlas rows from those files**; use
+  `src/channel_metadata.py`, which reads the correspondence sheet directly.
+  Any analysis that used AparcAseg from the wavelet side needs rechecking.
+
+- [ ] **A6b. Original (superseded) item: canonical channel-metadata access.** Atlas/channel metadata comes
   from each patient's electrode correspondence sheet but is imported
   inconsistently across preprocessing, analysis and plotting steps. Wanted: one
   canonical per-recording channel table plus a single accessor.

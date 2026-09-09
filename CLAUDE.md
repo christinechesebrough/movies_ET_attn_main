@@ -254,6 +254,12 @@ wavelet_power_10s/wavelet_{vid}_all_cortContacts_tf/{pat}/
 | `Y17_Atlas` | `Y17_Atlas_Region` |
 | `AparcAseg_Atlas` | `AparcAseg_Atlas_Region` |
 
+**WARNING:** in all 76 wavelet-side `*_channel_metadata.csv` files the
+`AparcAseg_Atlas` column is mispopulated — it is a verbatim copy of `Y7_Atlas`
+(Yeo-7 network names) rather than FreeSurfer regions. Tier 1/2 power CSVs are
+correct. Use `src/channel_metadata.py`, which reads the correspondence sheets
+directly, rather than these files.
+
 That covers four of the five rows. The fifth, `network`, comes from
 `define_custom_network_atlas.py`, which in the old chain **rewrites the Tier 1
 CSV in place** (line 245) to insert it; `lowpass_power_to_windows.py` then just
@@ -337,6 +343,27 @@ scale, and excised segments create discontinuities the transform can ring on.
 
 Recommended: manual continuous marking as the real cleaning step, automated MAD
 detection retained downstream as a QC cross-check.
+
+## Channel metadata: use src/channel_metadata.py
+
+`src/channel_metadata.py` is the canonical accessor (TODO A6). It reads the
+electrode correspondence sheets — the authoritative source — and normalizes
+atlas labels.
+
+```python
+from channel_metadata import load_channel_metadata, as_atlas_rows
+meta = load_channel_metadata('NS127_02', channels=data_columns)  # order-aligned
+rows = as_atlas_rows(meta)   # the 5-row block Tier 1/2 CSVs carry
+```
+
+It raises rather than silently misaligning if a data column has no metadata row.
+
+Background: the Yeo code->name mapping was duplicated across 9 scripts, and
+three Y7 vocabularies were in simultaneous use — raw codes (`7Networks_5`),
+short names (`Limbic`), long names (`Limbic Network (LN)`). All three are
+retained as explicit maps; `long` is the default because it matches the
+existing Tier 1/2 CSVs. A fourth, separate scheme assigns networks from
+hand-curated DK region lists in `compare_attn_states_*` — not reconciled.
 
 ## Conventions
 
