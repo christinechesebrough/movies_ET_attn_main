@@ -1,0 +1,527 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Aug 25 08:37:40 2026
+
+@author: christine
+"""
+
+import os, sys, re
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+
+import numpy as np
+import mne
+from pynwb import NWBHDF5IO
+import pandas as pd
+import matplotlib
+
+import matplotlib.pyplot as plt
+#import cv2
+import scipy.interpolate as interp
+import scipy.stats as stats
+
+import scipy.signal as signal
+#import temporal_response_function as trf
+from mne.time_frequency import psd_array_welch
+from mne.filter import filter_data
+from scipy.io.wavfile import write
+import importlib.util
+import glob
+from scipy.signal import hilbert
+from collections import defaultdict
+
+machine_path = 'media/christine'#'media/christine'#'Volumes' #'media/christine'
+
+sys.path.insert(0, f'/{machine_path}/Samsung/EPIPE-movie_nwb/Python')
+sys.path.append(f'/{machine_path}/Samsung/iEEG2NWB-main')
+
+import pycircstat2
+from pycircstat2 import hypothesis
+from epipe import inspectNwb, nwb2mne, read_ielvis, reref_avg, reref_bipolar,filter_hfa_continuous, reref_white_matter
+
+wd = f'/{machine_path}/Samsung/scripts/movies_ET_attn_main'
+src_dir = os.path.join(wd, 'src')
+src_dir = os.path.abspath(src_dir)
+
+# Add src to path if not already there
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+
+# Peek inside src to confirm the file is really there and spelled exactly
+print('src contents (first 20):')
+print([os.path.basename(p) for p in glob.glob(os.path.join(src_dir, '*'))][:20])
+
+# 1) Put src on sys.path (at the front)
+if src_dir not in sys.path:
+    sys.path.insert(0, src_dir)
+print('on sys.path?', src_dir in sys.path)
+
+import eeg_preproc_helpers
+
+# Import EEG preprocessing helper functions
+from eeg_preproc_helpers import (
+    plot_power_spectra,  plot_psd_batched, plot_psd_with_scales,
+    create_file_paths, apply_highpass_filter,
+    save_bad_channels, load_bad_channels, check_bad_channels_integrity, load_preprocessed_data, validate_mne_structure, preserve_mne_structure, restore_mne_structure, load_data_with_bad_channels, summarize_bad_channels, 
+    interpolate_spikes, make_groups_from_prefix, regress_out_noise_by_group,
+    detect_spikes_all_channels, reref_avg_by_group,
+    ProcessingLogger, detect_spikes_ref1, interpolate_spikes_psd
+)
+
+def _extract_run_label(fname: str) -> str:
+    """
+    Try to extract a run label like 'run-01' or 'run-1' from a filename.
+    Fallback: 'run-01'.
+    """
+    m = re.search(r'run[-_]?(\d+)', fname, flags=re.IGNORECASE)
+    if m:
+        return f"run-{int(m.group(1)):02d}"
+    return "run-01"
+
+def _extract_ses_label(fname: str) -> str:
+    """
+    Optional: extract 'ses-02' etc. Fallback: ''.
+    """
+    m = re.search(r'ses[-_]?(\d+)', fname, flags=re.IGNORECASE)
+    if m:
+        return f"ses-{int(m.group(1)):02d}"
+    return ""
+
+def _sort_key(f):
+    ses = _extract_ses_label(f)
+    run = _extract_run_label(f)
+    return (ses, run, f)
+
+# Parameters
+full_task_name = 'movies'
+pipeline_name = 'preprocess_movies'
+pipeline_version = 'v.1.0.725'
+
+resample_fs = 600
+
+vid = 'despicable_me_english'#["dme", "despicable_me_english"]
+
+# Types of references to use in analyses
+# Must be a list containing at least one of the options: "avg", "bip"
+ref_types = ['avg']
+
+n_jobs = 16
+
+convert_db = True
+
+# Frequency range
+freq_range = [70, 150]
+n_freq_bins = 10
+freq_space = 'log'      # 'log', 'lin'
+
+resample_bha_fs = 100
+
+freq_bands = ['low','middle','high']
+
+movie_table = pd.read_excel(f'/{machine_path}/Samsung/Movie_data/data/electrode_localization/movie_table.xlsx')
+
+# Define directories
+data_dir = f'/{machine_path}/Samsung/Movie_data/movies_nwb_standard'
+fs_dir = f'/{machine_path}/Data/anatomy'
+prep_dir = f'/{machine_path}/Samsung/Movie_data/movies_prep_standard'
+corr_dir = f'/{machine_path}/Samsung/Movie_data/data/movie_elec_corr_sheets'
+
+
+et_prep_dir = 'Eye_prep'
+audio_dir = 'Audio'
+neural_prep_dir = 'Neural_prep'
+hfa_dir = 'HFA'
+
+# Single File Processing Mode
+# Set to True to process only one specific file
+single_file_mode = False 
+
+# When single_file_mode is True, specify the file to process
+# Format: 'patient_id' or 'patient_id_implant_number'
+target_patient = 'LH019'#'NS205'  # e.g., 'NS189' or 'NS189_01'
+#target_movie = 'sub-NS127_ses-02_task-the_present_run-1_ieeg.nwb'
+target_movie = 'LH019_ses-Exp_Samp_Inscapes01_behavior+ecephys.nwb'
+
+if vid == 'despicable_me_hungarian':
+    patients= [
+    # 'LH010',
+    # 'LH012',
+    # 'NS127',
+    # 'NS128',
+    # 'NS135',
+    # 'NS136',
+    # 'NS137',
+    # 'NS138',
+    # 'NS140',
+    # 'NS142', 
+    # 'NS144',
+    # 'NS145',
+    # 'NS149',
+    # 'NS151',
+    # 'NS153',
+    # 'NS154',
+    # 'NS155',
+    # 'NS164',
+    # 'NS166',
+    # 'NS167',
+    # 'NS174',
+    'NS178',
+    # 'NS211'
+     ]
+
+if vid == 'despicable_me_english':
+     patients = [
+    # 'NS127',
+    # 'NS135',
+    # 'NS136',
+    # 'NS137',
+    # 'NS138',
+    # # 'NS140',
+    # 'NS151',
+    # 'NS153',
+    # 'NS154',
+    # 'NS155',
+    # 'NS164',
+    # 'NS174',
+     'NS178',
+    # 'NS190',
+    # 'NS191',
+    #'NS193',
+    # 'NS194',
+    # 'NS201',
+    # 'NS204',
+    # 'NS205'
+    ]
+
+if vid == 'inscapes':
+    patients = [
+   # 'NS127',
+#    'NS135',
+    # 'NS136',
+    # 'NS137',
+    # 'NS138',
+    #'NS140',
+ #   'NS151',
+  #  'NS153',
+ #   'NS154', # battery dead in middle of recording, not worth trying to save
+ #   'NS155',
+    # 'NS164',
+    # 'NS166',
+    'NS178',
+    # 'NS205',
+    # 'NS210'
+    ]     
+    
+    
+### PREPROC NOTES ###
+# 178 spike interpolation introduces large artifacts at notch freqs
+# 166 high fs, change filter, 
+    
+vid_keys = {
+    'betta': ['betta', 'Betta'],
+    'inscapes': ['inscapes', 'Inscapes'],
+    'despicable_me_english': ['despicable_me_english','dme'],
+    'despicable_me_hungarian': ['despicable_me_hungarian','dmh'],    
+}
+
+
+broken_nwb = []
+
+if single_file_mode:
+    # Single file processing mode
+    print(f"\n{'='*60}")
+    print(f"SINGLE FILE PROCESSING MODE")
+    print(f"Target Patient: {target_patient}")
+    print(f"Target Movie: {target_movie}")
+    print(f"{'='*60}\n")
+    
+    # Extract session number from the target movie filename
+    # Expected format: NS189_ses-02_task-despicable_me_english_run-01_ieeg.nwb
+    if 'ses-0' in target_movie:
+        # Extract session number from filename
+        ses_match = re.search(r'ses-(\d+)', target_movie)
+        if ses_match:
+            ses_num = ses_match.group(1)
+            imp = f'ses-{ses_num}'
+        else:
+            print(f"❌ ERROR: Could not extract session number from filename: {target_movie}")
+            #sys.exit(1)
+    else:
+        # Fallback to ses-01 if no session info in filename
+        imp = 'ses-01'
+    
+    # Set patient path
+    pat = f'{target_patient}'
+
+    # Validate that the target file exists
+    if data_dir == f'/{machine_path}/Samsung/Movie_data/movies_nwb_standard':
+        target_nwb_path = '{:s}/{:s}/{:s}/{:s}'.format(data_dir, pat, imp, target_movie)
+    elif data_dir == f'/{machine_path}/Samsung/movie_data_new/movies_new_nwb_fall25':
+        target_nwb_path = '{:s}/{:s}/{:s}'.format(data_dir, pat, target_movie)
+    elif data_dir == f'/{machine_path}/Samsung/Movie_data/movies_new_nwb':
+        target_nwb_path = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp, target_movie)
+    elif data_dir ==f'/{machine_path}/Samsung/AV40_data/new_converted':
+        target_nwb_path = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp, target_movie)
+    elif data_dir == f'/{machine_path}/Samsung/exp_samp_data/converted':
+        target_nwb_path = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp, target_movie)
+    elif data_dir == f'/{machine_path}/Samsung/exp_sampling/es_nwb_standard':
+        target_nwb_path = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp, target_movie)
+
+    if not os.path.exists(target_nwb_path):
+        print(f"❌ ERROR: Target file not found: {target_nwb_path}")
+        print("Please check the target_patient and target_movie parameters.")
+        print(f"Expected path: {target_nwb_path}")
+        #sys.exit(1)
+    
+    print(f"✅ Target file found: {target_nwb_path}")
+    
+    # Process single file
+    patients_to_process = [pat]
+    implants_to_process = [imp]
+    movies_to_process = [target_movie]
+    
+else:
+    # Batch processing mode
+    print(f"\n{'='*60}")
+    print(f"BATCH PROCESSING MODE")
+    print(f"Patients to process: {patients}")
+    print(f"{'='*60}\n")
+    
+    patients_to_process = [f'{p}' for p in patients]
+    implants_to_process = []
+    movies_to_process = []
+
+# Process files
+for pat in patients:
+        
+    implants = os.listdir('{:s}/{:s}'.format(data_dir, pat))
+       
+    if single_file_mode:
+        # Single file mode - use predefined implants and movies
+        implants_to_process = implants_to_process
+        movies_to_process = movies_to_process
+    else:
+        # Batch mode - get all implants and movies
+        implants_to_process = implants
+        movies_to_process = []
+    
+    for imp in implants_to_process:
+        
+        if data_dir == f'/{machine_path}/Samsung/Movie_data/movies_nwb_standard':
+            ieeg_dir = '{:s}/{:s}/{:s}'.format(data_dir, pat, imp)
+        elif data_dir == f'/{machine_path}/Samsung/movie_data_new/movies_new_nwb_fall25':
+            ieeg_dir = '{:s}/{:s}/'.format(data_dir, pat)
+        elif data_dir == f'/{machine_path}/Samsung/Movie_data/movies_new_nwb':
+            ieeg_dir = '{:s}/{:s}/{:s}'.format(data_dir, pat, imp)
+        elif data_dir ==f'/{machine_path}/Samsung/AV40_data/new_converted':
+            ieeg_dir = '{:s}/{:s}/{:s}'.format(data_dir, pat, imp)
+        elif data_dir == f'/{machine_path}/Samsung/exp_samp_data/converted':
+            ieeg_dir = '{:s}/{:s}/{:s}'.format(data_dir, pat, imp)
+        elif data_dir == f'/{machine_path}/Samsung/exp_sampling/es_nwb_standard':
+            ieeg_dir = '{:s}/{:s}/{:s}'.format(data_dir, pat, imp)
+    
+        if single_file_mode:
+            movies = movies_to_process
+        else:
+            movies = [f for f in os.listdir(ieeg_dir) if f.endswith('.nwb')]
+        
+            if 'vid' in locals():
+                keys = vid_keys.get(vid, [vid])
+                movies = [mov for mov in movies if any(k.lower() in mov.lower() for k in keys)]
+        
+        # Extract session number from implant name (e.g., 'ses-01' -> 1)
+        ses_match = re.search(r'ses-(\d+)', imp)
+        if ses_match:
+            ses_num = int(ses_match.group(1))
+        else:
+            ses_num = 1  # Default to session 1 if no match
+        
+        if ses_num == 1:
+            pat_fs = pat.replace('sub-', '')
+        else:
+            pat_fs = '{:s}_{:02d}'.format(pat.replace('sub-', ''), ses_num)
+    
+        sub_fs_dir = '{:s}/{:s}'.format(fs_dir, pat_fs)
+        
+        sub_neural_prep_dir = '{:s}/{:s}/{:s}'.format(prep_dir, pat_fs, neural_prep_dir)
+        sub_et_prep_dir = '{:s}/{:s}/{:s}'.format(prep_dir, pat_fs, et_prep_dir)
+        
+        if not os.path.exists(sub_neural_prep_dir):
+            os.makedirs(sub_neural_prep_dir)
+        if not os.path.exists(sub_et_prep_dir):
+            os.makedirs(sub_et_prep_dir)
+    
+        for mov in movies:
+            # Create standardized file paths for this movie
+            file_paths = create_file_paths(
+                patient_id=pat_fs,
+                implant_id=imp,
+                movie_filename=mov,
+                prep_dir=prep_dir,
+                neural_prep_dir=neural_prep_dir,
+                hfa_dir=hfa_dir
+            )
+            
+            # Initialize logger for this movie
+            movie_name = file_paths['movie_base']
+            logger = ProcessingLogger(pat_fs, movie_name, file_paths['sub_prep_dir'])
+            
+            # Construct the NWB file path
+            if data_dir == f'/{machine_path}/Samsung/Movie_data/movies_nwb_standard':
+                nwb_fname = '{:s}/{:s}/{:s}/{:s}'.format(data_dir, pat, imp, mov)
+            elif data_dir == f'/{machine_path}/Samsung/movie_data_new/movies_new_nwb_fall25':
+                nwb_fname = '{:s}/{:s}/{:s}'.format(data_dir, pat, mov)
+            elif data_dir == f'/{machine_path}/Samsung/Movie_data/movies_new_nwb':
+                nwb_fname = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp, mov)
+            elif data_dir ==f'/{machine_path}/Samsung/AV40_data/new_converted':
+                nwb_fname = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp,mov)
+            elif data_dir == f'/{machine_path}/Samsung/exp_samp_data/converted':
+                nwb_fname = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp,mov)
+            elif data_dir ==f'/{machine_path}/Samsung/exp_sampling/es_nwb_standard':
+                nwb_fname = '{:s}/{:s}/{:s}/ieeg/{:s}'.format(data_dir, pat, imp, mov)
+    
+            # proceed
+            print(f"\n{'='*60}")
+            print(f"PROCESSING FILE:")
+            print(f"Patient: {pat_fs}")
+            print(f"Implant: {imp}")
+            print(f"Movie: {mov}")
+            print(f"File: {nwb_fname}")
+            print(f"{'='*60}\n")
+            
+            if single_file_mode:
+                print("⚠️ SINGLE FILE MODE: Processing only this file")
+                print("⚠️ Make sure this is the correct file before proceeding!\n")
+                
+                # Ask for confirmation in single file mode
+                confirm = input("Continue with this file? (y/n): ")
+                if confirm.lower() != 'y':
+                    print("Processing cancelled.")
+                    sys.exit(0)
+                print("✅ Proceeding with processing...\n")
+            
+            # Log file information
+            logger.log_decision("FILE", f"Processing: {nwb_fname}")
+            logger.log_decision("PATIENT", f"Patient: {pat_fs}, Implant: {imp}")
+            
+            #%%
+            reload = True
+            
+            for ref in ref_types:
+                
+                preprocessed_dir = sub_neural_prep_dir
+                
+                fif_files = sorted([
+                    f for f in os.listdir(preprocessed_dir)
+                    if vid in f
+                    and f.endswith(f"referenced_{ref}.fif")
+                    and not f.startswith(".")
+                    #and ("prep_ieeg" in f or "preprocessed_ieeg" in f)
+                ])
+                
+                lfp_file = os.path.join(preprocessed_dir, fif_files[0])        
+                print(f"Reloading cut and filtered data: {lfp_file}")
+                ecogReref = mne.io.read_raw_fif(lfp_file, preload=True)
+                
+                print(ecogReref)
+                print("\nChannel names:")
+                print(ecogReref.ch_names)
+                
+                
+                # Build an entry label that will propagate to outputs
+                ses_label = _extract_ses_label(lfp_file)
+                run_label = _extract_run_label(lfp_file)
+                if ses_label:
+                    entry_id = f"{pat}_{ses_label}_{run_label}"
+                else:
+                    entry_id = f"{pat}_{run_label}"
+
+                print(f"Loading data for entry {entry_id} from {lfp_file} ...")
+                
+                if run_label == 'run-01':
+                    run_keys = ['run-01','run-1']
+                if run_label == 'run-02':
+                    run_keys = ['run-02','run-2']
+                
+                
+                    
+                                    
+                # Find candidate files already in the patient dir
+                bad_channel_files = [
+                    f for f in os.listdir(sub_neural_prep_dir)
+                    if (
+                        ('bad_channels' in f)
+                        and f.endswith('.txt')
+                        and any(k.lower() in f.lower() for k in keys)
+                        and not f.startswith('._')
+                    )
+                ]
+                
+                # Narrow to candidates matching ref + run
+                ref_bad_channel_files = [
+                    f for f in bad_channel_files
+                    if (
+                        (ref in f)
+                        and any(r in f for r in run_keys)
+                    )
+                ]
+                
+                # Helper: pick most recent if multiple
+                def pick_most_recent(files):
+                    if not files:
+                        return None
+                    return max(files, key=lambda fn: os.path.getmtime(os.path.join(sub_neural_prep_dir, fn)))
+                
+                picked = pick_most_recent(ref_bad_channel_files)
+                
+                # If none found, define a NEW file name we will create
+                # Make sure this naming is unique enough for your workflow
+                if picked is None:
+                    # You can include ses_label/run_label if you want; run_keys might be list like ["run-01", "run-1"]
+                    # Use run_label if you have a single normalized run label available.
+                    picked = f'{pat}_{ses_label}_{vid}_{run_label}_{ref}_bad_channels.txt'
+
+                bad_channel_path = os.path.join(sub_neural_prep_dir, picked)
+                
+                # Read existing file (if any)
+                #    Preserve header/comments, parse channel lines robustly.
+                               # Read existing file (if any)
+                header_lines = []
+                existing_bads = []
+                
+                if os.path.exists(bad_channel_path):
+                    with open(bad_channel_path, "r") as f:
+                        for ln in f:
+                            s = ln.strip()
+                            if not s:
+                                continue
+                            if s.startswith("#"):
+                                header_lines.append(ln.rstrip("\n"))
+                                continue
+                            existing_bads.append(s)
+                
+                # Safely get FIF bads (empty list if none)
+                fif_bads = list(mne_data.info.get("bads", []))
+                
+                # --- NEW: filter to only channels that exist in this Raw ---
+                ch_set = set(mne_data.ch_names)  # or mne_data.info["ch_names"]
+                
+                existing_bads_valid = [ch for ch in existing_bads if ch in ch_set]
+                existing_bads_missing = [ch for ch in existing_bads if ch not in ch_set]
+                
+                # Optional: log missing bads once (useful for debugging)
+                if existing_bads_missing:
+                    print(
+                        f"Warning: {len(existing_bads_missing)} bad channels from file are not in this recording and will be ignored. "
+                        f"Examples: {existing_bads_missing[:10]}"
+                    )
+                
+                # Merge (dedupe, preserve order) using only valid names
+                merged_bads = list(dict.fromkeys(fif_bads + existing_bads_valid))
+                
+                # Assign back
+                mne_data.info["bads"] = merged_bads
+

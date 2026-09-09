@@ -1,0 +1,519 @@
+Basic Preprocessing in Intracranial EEG
+=====================================
+
+Each preprocessing step transforms the data in specific ways, and decisions at this stage will directly shape the quality and interpretability of your analyses.
+
+**Implementation Notes:**
+
+The code examples in this documentation are written in Python and make use of the `mne` library for EEG data handling, along with custom preprocessing functions from:
+
+- **epipe**: A Python/Matlab library for iEEG preprocessing and analysis (`https://github.com/IEEG/epipe`)
+- **movies_ET_attn_main**: This preprocessing pipeline (`https://github.com/IEEG/movies_ET_attn_main`)
+
+Many equivalent functions are available in Matlab on the epipe GitHub repository. The examples demonstrate general implementation patterns that can be adapted for different datasets and research questions. 
+
+Every preprocessing pipeline will differ depending on your research goals, data quality, experimental design, and specific analysis plans. It is common to preprocess the same dataset in slightly different ways to suit different planned analyses.
+
+However, it is crucial to maintain a logical processing order to avoid introducing artifacts or distortions. For example, downsampling before applying appropriate anti-aliasing filters can result in signal aliasing, distorting frequency content in irreversible ways. Similarly, re-referencing before removing bad channels can spread channel-specific noise across the dataset.
+
+These steps should be treated as a flexible guide, not a strict one-size-fits-all protocol. Thoughtful decisions at each stage, informed by your data characteristics and research questions, are essential for valid and interpretable results.
+
+Below is an overview of essential preprocessing steps, their rationale, and implications:
+
+1. Importing and Structuring Data
+--------------------------------
+
+The first step is to import the raw data into an appropriate data structure (e.g., converting TDT or .edf files into .ecog or .nwb formats). At the start of your preprocessing step, your data should already be converted into the data structure you want, though some steps may still remain. 
+
+**Montage Creation**: Unlike scalp EEG, which uses standardized electrode layouts, intracranial recordings involve depth electrodes or grids implanted in unique locations for each patient. Thus, a custom montage must be created for every individual, incorporating information about the anatomical locations of each contact.
+
+**Alignment of Concurrent Data Streams**
+
+During import, analog and digital streams must be aligned to synchronize neural data with experimental events and physiological signals. This alignment is foundational for interpreting neural responses in context. Streams may include:
+
+* TTL pulses marking stimulus or event onsets/offsets
+* Audio or microphone recordings
+* Response button presses
+* Concurrent physiological recordings such as EKG, EMG
+* Eye-tracking data
+* Respiration belts
+
+If these streams are misaligned, your ability to interpret time-locked neural responses or physiological correlates will be compromised.
+
+**Correspondence Sheet**
+
+You should have access to a correspondence sheet containing each electrode's label, spatial location, and anatomical designation in standard brain atlases. This sheet also provides critical information about tissue characteristics surrounding each contact, including:
+
+* Tissue density (e.g., whether the contact is in gray matter or white matter, and a measure of what proportion of its neighboring contacts are in white matter). 
+* Whether the contact is located within epileptiform regions, such as sites exhibiting interictal spikes ("spiky" channels) or in seizure onset zones (SOZ).
+
+While you may be interested in analyzing these channels for clinically oriented research, for analyses that assume neural recordings from healthy tissue, contacts located in diseased or epileptogenic areas should typically be excluded to avoid confounding your results with pathology-related activity.
+
+Importing the correspondence sheet into your data structure ensures that every channel is correctly identified and can be referenced for filtering, analysis, and visualization. Failure to do so may result in misinterpretation of brain region activity.
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Load electrode correspondence information
+    import pandas as pd
+    import os
+    import numpy as np
+    import mne
+    
+    # Define paths
+    elec_recon_dir = os.path.join(fs_dir, patient_id, 'elec_recon')
+    
+    # Find correspondence file
+    excel_files = [f for f in os.listdir(elec_recon_dir)
+                   if 'correspondence' in f and f.endswith('.xlsx')]
+    
+    if excel_files:
+        correspondence_file = os.path.join(elec_recon_dir, excel_files[0])
+        elec_ref_table = pd.read_excel(correspondence_file)
+        print(f"Loaded correspondence data for {len(elec_ref_table)} electrodes")
+    else:
+        print("No correspondence file found")
+    
+    # Create montage from correspondence sheet
+    # Load ielvis coordinates for electrode positions
+    from epipe import read_ielvis
+    
+    try:
+        ielvis_df = read_ielvis(sub_fs_dir)
+        ch_coords = {}
+        nan_array = np.empty((3,)) * np.nan
+        
+        for this_ch in raw_data.ch_names:
+            idx = np.where(ielvis_df['label'] == this_ch)[0]
+            if len(idx) == 1:
+                xyz = np.array(ielvis_df.iloc[idx[0]]['LEPTO'])
+                ch_coords[this_ch] = xyz/1000  # Convert to meters
+            elif len(idx) == 0:
+                ch_coords[this_ch] = nan_array
+            else:
+                raise ValueError(f'Multiple matches found for channel {this_ch}!')
+    except:
+        # Fallback: create empty coordinates
+        ch_coords = {}
+        for this_ch in raw_data.ch_names:
+            ch_coords[this_ch] = np.empty((3,)) * np.nan
+    
+    # Create MNE montage
+    montage = mne.channels.make_dig_montage(ch_pos=ch_coords, coord_frame='mri')
+    montage.add_estimated_fiducials(patient_id, fs_dir)
+    raw_data.set_montage(montage)
+    
+    print(f"Created montage with {len(ch_coords)} electrode positions")
+
+2. Filtering
+------------
+
+Filtering shapes the frequencies present in your data, with direct effects on which neural signals are retained and which artifacts are removed:
+
+**Notch Filtering (Line Noise Removal)**: Removes power line noise and its harmonics (typically 50 Hz in Europe, Asia, and Australia; 60 Hz in the US and parts of South America). Harmonics (e.g., 100/120 Hz, 150/180 Hz) should also be filtered. For example, here in the US, our preprocessing pipeline removes line noise at 60 Hz, 120 Hz, and 180 Hz. 
+
+**Bandpass Filtering**:
+
+* **Lowpass Filter**: Eliminates high-frequency noise above your analysis window. For most cognitive iEEG studies, a cutoff of ~200 Hz is standard, but this can be extended up to ~220 Hz if high-frequency activity (HFA) analyses are planned. Filtering out frequencies beyond this range removes non-physiological artifacts (e.g. amplifier noise) and reduces data size without loss of relevant neural information.
+
+* **Highpass Filter**: Removes slow drifts and DC offsets. Unlike scalp EEG, iEEG is less affected by low-frequency drift, but applying a highpass filter around 0.5–1 Hz can still improve signal stability for some analyses (e.g., ERP baselining).
+
+Each filter introduces its own characteristics (e.g. edge effects, phase shifts), so filter parameters should be chosen to preserve frequencies of interest while minimizing distortions.
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Apply notch filtering to remove line noise
+    notch_freqs = (60, 120, 180)  # US power line frequencies
+    raw_data.notch_filter(freqs=notch_freqs, notch_widths=2)
+    
+    # Apply bandpass filter
+    raw_data.filter(l_freq=0.1, h_freq=200.0)
+    
+    # Downsample to target sampling rate
+    target_fs = 600  # Hz
+    raw_data_resampled = raw_data.resample(target_fs)
+    
+    # Optional: Apply high-pass filter for drift removal
+    from eeg_preproc_helpers import apply_highpass_filter
+    
+    apply_highpass = False  # Set based on your data needs
+    if apply_highpass:
+        raw_data_filtered = apply_highpass_filter(
+            raw_data_resampled, 
+            sfreq=target_fs, 
+            l_freq=0.5
+        )
+    else:
+        raw_data_filtered = raw_data_resampled
+
+3. Downsampling
+---------------
+
+Downsampling reduces data size and computational load by lowering the sampling rate. The key consideration is to retain a sampling rate that is at least twice the highest frequency you wish to analyze (Nyquist criterion):
+
+* For analyses up to 150 Hz: minimum sampling rate = 300 Hz
+* For analyses up to 200 Hz: minimum sampling rate = 400 Hz
+* For analyses up to 250 Hz: minimum sampling rate = 500 Hz
+
+In practice, researchers often maintain a sampling rate of 600 Hz or higher to ensure sufficient temporal resolution for precise event-related analyses, but downsampling to these minimums can substantially reduce data size if high temporal precision is not required.
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Manual bad channel marking with interactive plot
+    fig = raw_data.plot(
+        scalings=dict(seeg=200e-6),
+        n_channels=32,
+        remove_dc=True,
+        show_scrollbars=True,
+        duration=15.0
+    )
+    
+    # After marking bad channels, save them
+    from eeg_preproc_helpers import save_bad_channels, check_bad_channels_integrity
+    
+    # Save bad channels to file
+    bad_channels_file = f"{patient_id}_{data_name}_bad_channels.txt"
+    save_success = save_bad_channels(
+        raw_data, 
+        bad_channels_file, 
+        patient_id, 
+        data_name
+    )
+    
+    # Check bad channel integrity
+    integrity_check = check_bad_channels_integrity(raw_data, "After Manual Marking")
+    
+    # Print summary
+    from eeg_preproc_helpers import summarize_bad_channels
+    summarize_bad_channels(raw_data, "After Manual Marking")
+
+4. Mark Bad Channels
+--------------------
+
+**Channel Rejection in Intracranial EEG Preprocessing**
+
+Bad channels – those with faulty connections, flat signals, or excessive noise – can introduce artifacts that seriously compromise your data quality and interpretation. These issues may arise from physiological factors or external electronic interference.
+
+The number of channels you remove during preprocessing, and your rationale for doing so, should be guided by the goals of your downstream analyses.
+
+For localized analyses targeting specific brain regions, it may not be necessary to remove all noisy channels. Using local referencing methods, such as bipolar referencing, can help maximize signal differentials between neighboring electrodes even in the presence of some noisy channels. Additionally, if your analysis focuses on event-related or epoch-based activity, you may be able to reject noisy data segments without excluding entire channels.
+
+White matter referencing is another common approach, where channels located in presumed electrically neutral white matter are used as the reference signal. This can help reduce the influence of widespread cortical activity and emphasize local field potentials. However, it is critical to ensure that the white matter reference channel itself is clean and free of artifacts; including a bad channel as your reference can propagate noise across all channels it references.
+
+For whole-brain analyses or studies examining longer continuous recordings, you may opt to use an average reference across channels. In these cases, retaining channels with artifacts or non-physiological signals can introduce significant noise into the averaged signal, degrading data quality. Therefore, careful identification and removal of bad channels becomes especially important.
+
+There are also algorithms for automatic selection of bad/artifactual channels, which have steadily become reliable over time. We advise that you still manually review channels algorithmically flagged as bad before rejecting. 
+
+* Matlab: Can use ft_rejectvisual in Fieldtrip
+* Python: use https://autoreject.github.io/stable/index.html
+
+Below are some important considerations to keep in mind when visually inspecting and rejecting bad channels in intracranial electrodes during preprocessing, with examples showing common types of physiological and non-physiological artifacts. 
+
+**Visual Inspection**
+
+Bad channels come in many flavors. In the context of intracranial EEG, they can broadly be categorized as: 
+
+1. **Non-physiological artifacts** are signals originating from sources outside the brain, such as environmental electrical interference or equipment issues. Some types of artifacts, such as line noise from electrical systems, are limited to specific frequency bands (for example, 50 Hz or 60 Hz and their harmonics) and can be effectively reduced with notch filtering during preprocessing. However, noise can also arise from other unknown or non-stationary sources, such as faulty electrodes, cable movements, or recording hardware issues. These artifacts may be sustained, affecting the entire recording duration, or be transient, appearing only during certain periods. Because such noise cannot always be removed through filtering or cleaning algorithms, affected contacts are often excluded from further analysis to ensure data quality. Therefore, it is important to inspect the entire recording of each channel to identify both persistent and intermittent artifacts before proceeding to analysis.
+
+   * **Example 1**: LPc2 stands out from the other contacts on the same electrode shaft, showing high frequency noise and irregularities in the signal.
+
+   .. image:: images/visual_inspection/Example_1.png
+      :alt: Example 1 - Non-physiological artifact in LPc2
+      :width: 100%
+
+   * **Example 2**: ROl1 looks physiologically implausible; usually, a contact with generally low amplitude is unlikely to show intermittent high frequency activity in this manner, suggesting the electrode may be compromised. 
+
+   .. image:: images/visual_inspection/Example_2.png
+      :alt: Example 2 - Physiologically implausible signal in ROl1
+      :width: 100%
+
+   * **Example 3**: The high variability in the signal fluctuations of RPi4 seems implausible if we compare it to its neighboring contacts. While it's possible for two neighboring contacts to be in different brain regions with different activity profiles, a contrast of this scale is unlikely.
+
+   .. image:: images/visual_inspection/Example_3.png
+      :alt: Example 3 - High variability in RPi4 compared to neighbors
+      :width: 100%
+
+   * **Example 4**: Transient non-physiological artifact.
+
+   .. image:: images/visual_inspection/Example_4.png
+      :alt: Example 4 - Transient non-physiological artifact
+      :width: 100%
+
+2. **Pathological artifacts**:
+
+   **Interictal spikes**: Interictal spikes are brief, sharp waveforms typically lasting 20–70 milliseconds that occur between seizures in patients with epilepsy. They reflect abnormal synchronous neuronal firing and are considered markers of epileptogenic tissue. Examples 5–6 show interictal spikes. 
+
+   .. image:: images/visual_inspection/Example_5.png
+      :alt: Example 5 - Interictal spikes
+      :width: 100%
+
+   .. image:: images/visual_inspection/Example_6.png
+      :alt: Example 6 - Interictal spikes
+      :width: 100%
+
+   In Example 7, contacts RDh2-6 and RDp3-5 display epileptiform spiking activity. Depending on the frequency and distribution of these spikes, and whether these contacts are within the seizure onset zone (SOZ), the experimenter may choose to either exclude these contacts from further analysis or exclude only the time windows (epochs or trials) affected by the spikes to preserve unaffected data.
+
+   .. image:: images/visual_inspection/Example_7.png
+      :alt: Example 7 - Epileptiform spiking activity in RDh2-6 and RDp3-5
+      :width: 100%
+
+   **Slow waves**: Slow waves are high-amplitude, low-frequency deflections (typically below 1 Hz) that can occur in epileptogenic cortex. They may reflect underlying pathology such as cortical dysgenesis or gliosis, or post-ictal slowing following seizures. While slow waves can also be seen during sleep, persistent or focal slow waves in awake recordings often indicate underlying structural or functional abnormalities. They can distort low-frequency analyses if not identified and accounted for.
+
+   **Intermittent high frequency activity**: Intermittent high-frequency activity refers to brief bursts of high-frequency oscillations (HFOs), often in the 80–500 Hz range. Pathological HFOs are typically seen in epileptogenic tissue and are thought to reflect abnormal synchronous firing of small neuronal populations. While physiological high-frequency activity can be seen during normal cognitive processes, pathological HFOs tend to be more focal, irregular, and unlinked to behavioral events. Identifying and excluding channels or time segments with pathological HFOs is important when your analysis assumes healthy neural oscillatory dynamics. 
+
+3. **Flat or "baseline" signal**. 
+
+   These contacts are not necessarily "noisy", but don't seem to contain relevant brain signal. They will look mostly flat, or show small fluctuations that are identical across multiple unrelated channels. This can happen with faulty contacts or contacts located outside the brain, whereby they pick up no signal of their own but may still reflect the signal/noise in the electrode used as the online reference during recordings.
+
+   **Example 8**: The signal in LDp11 and LTi7,9,11 looks very flat compared to the rest of the contacts. Additionally, they look nearly identical even though LDp11 and LTi contacts are not in the same brain area. These contacts were likely faulty.  
+
+   .. image:: images/visual_inspection/Example_8.png
+      :alt: Example 8 - Flat signal in LDp11 and LTi7,9,11
+      :width: 100%
+
+4. **Contacts that are located outside the brain**. 
+
+   Some implanted electrodes will fall outside of the brain in interstitial fluid, the meningeal layers, or skull. These should typically be removed during the first import phase, and marked in the electrode correspondence sheet. They will either contain little/no signal (see point above) or pick up external noise. They should not be included in data analyses. 
+
+   **Examples 9.1 and 9.2**: Suspicious waveforms in RTx2 and RTx3 deserve inspection. Their location is marked as 'unknown' which means they may be out of the brain.
+
+   .. image:: images/visual_inspection/Example_9.1.png
+      :alt: Example 9.1 - Suspicious waveforms in RTx2
+      :width: 100%
+
+   .. image:: images/visual_inspection/Example_9.2.png
+      :alt: Example 9.2 - Suspicious waveforms in RTx3
+      :width: 100%
+
+**When and how to exclude white matter contacts?**
+
+Unless you are interested specifically in white matter, it usually makes sense to exclude contacts located in white matter. White matter contacts may look noticeably flatter than neighboring electrodes, but some white matter contacts carry signal from nearby cortical electrodes, so it can be useful to include contacts adjacent to cortical contacts.
+
+You can tell how 'close' a wm contact is to the cortex by using the PTD index (located in the correspondence sheet). A PTD value of -1 means it's entirely surrounded by other white matter contacts. A PTD value closer to 1 means more of its neighboring electrodes are cortical. 
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Load and restore bad channels for analysis
+    from eeg_preproc_helpers import load_data_with_bad_channels
+    
+    # Load data with bad channels restored
+    raw_data_with_bads = load_data_with_bad_channels(
+        preprocessed_file,
+        bad_channels_file, 
+        patient_id, 
+        data_name
+    )
+    
+    # Create PSD plots with different scales
+    from eeg_preproc_helpers import plot_psd_with_scales
+    
+    # Plot PSD with log x-axis scale
+    figures = plot_psd_with_scales(
+        raw_data_with_bads, 
+        scale_type='log_x',  # Log x-axis, linear y-axis
+        batch_size=32,
+        freq_bands=['all'],
+        patient_id=patient_id
+    )
+    
+    # Alternative: Plot specific frequency bands
+    freq_bands = ['low', 'middle', 'high']
+    figures = plot_psd_with_scales(
+        raw_data_with_bads, 
+        scale_type='linear',
+        batch_size=32,
+        freq_bands=freq_bands,
+        patient_id=patient_id
+    )
+
+5. Inspect Power Spectral Density (PSD)
+--------------------------------------
+
+Power Spectral Density (PSD) describes how the power of a signal is distributed across different frequency components. It shows how much signal power exists at each frequency, allowing you to identify dominant neural oscillations (such as alpha, beta, or gamma bands) and detect artifacts characterized by power in specific frequency ranges, such as line noise.
+
+Plotting the PSD at various preprocessing stages helps you:
+
+* **Identify bad channels**. Channels with unusually high power across all frequencies, or with sharp peaks at non-physiological frequencies, are often noisy or faulty. Conversely, flat or near-zero PSD indicating dead channels
+
+* **Detect line noise or amplifier noise**. Although line noise should always be removed with a notch filter, PSD inspection also reveals whether line noise artifacts extend into surrounding frequencies, prompting additional filtering. 
+
+* **Identify unexpected peaks**. PSD plots can reveal peaks from other physiological or non-physiological sources of interference, such as equipment noise or environmental electronics. Movement artifacts, though rare in iEEG, may nonetheless be present under certain conditions. If such peaks are identified, additional notch filtering or targeted cleaning can be applied to remove these specific frequencies.
+
+* **Assess re-referencing effects**. Re-referencing changes the spatial distribution of signals, which influences the PSD profile of each channel. Checking the PSD after re-referencing ensures that no unexpected artifacts have been introduced.
+
+* **Confirm physiological signal integrity**. Valid neural recordings should show expected frequency band power (for example, higher power in lower frequencies and a typical 1/f decay). Deviations from this pattern may indicate recording issues or artifacts that need to be addressed.
+
+It is recommended to plot the PSD before marking bad channels to identify outlier channels. Plot the PSD again after bad channel removal to confirm that problematic spectral profiles have been removed. Finally, plot the PSD after re-referencing to verify that re-referencing has not introduced broadband noise or unexpected frequency artifacts. 
+
+**Example 10** shows several ways of plotting the PSD on the same data after initial filtering (bandpass, notch at 60, 120, and 180 Hz) and downsampling to 600 Hz.
+
+.. image:: images/PSD/Example_10.png
+   :alt: Example 10 - PSD plots with different scales and frequency ranges
+   :width: 100%
+
+Panels A and B show PSD traces from 0 to 200 Hz plotted on a logarithmic x-axis scale. Using a log scale for frequency is helpful because it expands lower frequencies and compresses higher frequencies, allowing better visualization of the characteristic 1/f slope and any deviations from it across the full frequency range. This makes it easier to detect aberrations in spectral shape that might indicate artifacts or unusual neural activity patterns. In these plots, A shows all contacts, while B focuses on a subset of contacts to identify which contact has higher power in the 30-100 Hz range.
+
+Panels C and D show PSD traces from 30 to 170 Hz plotted on a linear x-axis scale. Linear scaling is useful for focusing on a narrower frequency band and for assessing absolute power differences across channels within that range. When visualizing PSD on a linear scale, it can be helpful to plot low (0-7 Hz), middle (8-30 Hz), and high (30-150+ Hz) frequencies separately to view traces on an appropriate scale for each band's typical amplitude. In these plots, C shows all contacts, while D shows the same subset of contacts as B to highlight which contact has higher power in the 30-100 Hz range.  
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # White matter referencing
+    from epipe import reref_avg, reref_bipolar
+    
+    # Apply different referencing methods
+    ref_types = ['wm', 'avg', 'bip']
+    
+    for ref in ref_types:
+        if ref == 'wm':
+            # Use selected white matter contacts as reference
+            wm_references = ['RIp12', 'LFp4', 'LDh8']  # Example contacts
+            raw_wm_ref = raw_data.set_eeg_reference(ref_channels=wm_references)
+            
+        elif ref == 'avg':
+            # Apply average referencing
+            raw_avg_ref = reref_avg(raw_data)
+            
+        elif ref == 'bip':
+            # Apply bipolar referencing
+            raw_bip_ref = reref_bipolar(raw_data)
+    
+    # Save referenced data
+    raw_wm_ref.save(f"{data_name}_referenced_wm.fif", overwrite=True)
+    raw_avg_ref.save(f"{data_name}_referenced_avg.fif", overwrite=True)
+    raw_bip_ref.save(f"{data_name}_referenced_bip.fif", overwrite=True)
+
+6. Rereferencing
+----------------
+
+Re-referencing is the process of redefining the reference point against which each electrode's voltage is measured. Because intracranial EEG signals are always relative to a reference, choosing an appropriate reference greatly influences the spatial distribution, amplitude, and interpretability of your data.
+
+**Average reference**
+
+An average reference subtracts, from each channel, the average signal across all included channels. This method assumes that the summed activity across all channels approximates zero, creating a neutral reference. Average referencing can reduce common noise across channels and highlight local differences in activity.
+
+When using an average reference, ensure that you exclude bad channels from the average. Including noisy or artifactual channels in the average reference can introduce noise across all channels, degrading signal quality.
+
+**Bipolar reference**
+
+A bipolar reference subtracts the signal of one contact from that of its immediate neighbor along a depth electrode or grid strip. This approach emphasizes local potential differences between adjacent contacts, reducing the influence of widespread volume-conducted signals and far-field noise. Bipolar referencing is often used for analyses targeting highly local activity patterns, such as detecting high-frequency activity or local event-related potentials in cortical and subcortical structures.
+
+**Custom Montage Reference**
+
+Custom referencing involves choosing specific channels to serve as the reference for other channels. This step may be implemented early in the preprocessing pipeline, even before filtering, if there is widespread noise across all channels suggesting that the original recording reference was faulty or inappropriate. Re-referencing to a single, appropriate reference electrode at this stage can improve data quality for subsequent preprocessing steps. Often, multiple designated reference (REF) electrodes are implanted in areas of low-variance tissue specifically for this purpose. 
+
+Downstream in preprocessing, you may choose to implement white matter referencing, where one or more contacts located in presumed electrically neutral white matter are used as the reference. White matter referencing is achieved by identifying one or several contacts in white matter based on anatomical localization from the correspondence sheet or imaging data, and then setting these contacts as the reference for one or more other channels in your data structure.
+
+White matter referencing can reduce the influence of widespread cortical signals and better isolate local field potentials. However, it is essential to ensure that the white matter contact itself is clean and free of artifacts, as any noise in the reference will propagate to all channels that use it.
+
+In some cases, it can be beneficial to select a reference or white matter electrode that shows the same distribution of a specific artifact you want to remove. For example, if an environmental noise source contaminates all channels similarly, referencing to a channel that captures this artifact can effectively subtract it out. However, it is important to avoid choosing a white matter electrode with different artifacts, as this would introduce new noise into the re-referenced signals rather than removing shared contamination.
+
+For localized analyses, it can be useful to select a white matter electrode for re-referencing that is spatially co-located near the contact or contacts of interest. This maximizes the ability to isolate local neural signals while minimizing the influence of distant sources or differential noise patterns.
+
+For widespread analyses involving all contacts, an alternative or complement to average re-referencing is to select a subset of several white matter contacts that show low variance and are spatially distributed across the brain. This approach helps create a more neutral and representative reference, reducing the risk that the chosen reference disproportionately reflects local activity from a single region.
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Create standardized file paths for preprocessing
+    from eeg_preproc_helpers import create_file_paths
+    
+    file_paths = create_file_paths(
+        patient_id=patient_id,
+        implant_id=implant_id,
+        movie_filename=movie_filename,
+        prep_dir=prep_dir,
+        neural_prep_dir='Neural_prep',
+        hfa_dir='HFA'
+    )
+    
+    # Initialize processing logger
+    from eeg_preproc_helpers import ProcessingLogger
+    
+    logger = ProcessingLogger(patient_id, data_name, file_paths['sub_prep_dir'])
+    logger.log_section("REFERENCING STEPS")
+    
+    # Log referencing decisions
+    for ref in ref_types:
+        logger.log_referencing(ref.upper(), f"Applied {ref} referencing")
+        logger.log_file_save(f"{ref.upper()}_REFERENCED", file_paths['referenced_files'][ref])
+
+7. Epoching 
+------------
+
+Epoching involves segmenting your continuous data into smaller time windows based on specific events or durations.
+
+For event-related analyses, epochs are created around experimental events or stimuli, enabling you to examine neural responses time-locked to those events (e.g. -500 ms to +1500 ms around stimulus onset). Alternatively, for analyses of spontaneous or non-event-related activity, you may epoch data into fixed-length windows (for example, 500-second segments) to examine resting-state dynamics, baseline power, or ongoing oscillatory activity.
+
+Some analyses, such as those examining long-term temporal dynamics or functional connectivity over extended periods, may instead use continuous data segments without epoching.
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Epoch data around events (example for event-related analysis)
+    events = mne.find_events(raw_data)
+    
+    # Define epoch parameters
+    tmin, tmax = -0.5, 1.5  # Pre- and post-stimulus time
+    baseline = (-0.5, 0)    # Baseline period
+    
+    # Create epochs
+    epochs = mne.Epochs(
+        raw_data, 
+        events, 
+        tmin=tmin, 
+        tmax=tmax, 
+        baseline=baseline,
+        preload=True
+    )
+    
+    # For continuous data analysis (no epoching)
+    # Use the continuous data directly
+    continuous_data = raw_data.get_data()
+    
+    # Save epochs or continuous data
+    epochs.save(f"{data_name}_epochs.fif", overwrite=True)
+    # or
+    raw_data.save(f"{data_name}_continuous.fif", overwrite=True)
+
+8. Save Output
+--------------
+
+Finally, save your preprocessed data in an appropriate format for downstream analyses. Now your data is ready for statistical testing, connectivity analyses, machine learning pipelines, or visualization.
+
+**Example Implementation:**
+
+.. code-block:: python
+
+    # Save final preprocessed data
+    preprocessed_filename = file_paths['preprocessed_file']
+    raw_data.save(preprocessed_filename, fmt='single', overwrite=True)
+    
+    # Save bad channels information
+    from eeg_preproc_helpers import save_bad_channels
+    save_bad_channels(
+        raw_data, 
+        file_paths['bad_channels_file'], 
+        patient_id, 
+        data_name
+    )
+    
+    # Finish logging
+    logger.finish_log()
+    
+    print(f"✅ Preprocessing complete!")
+    print(f"  - Preprocessed data: {preprocessed_filename}")
+    print(f"  - Bad channels: {file_paths['bad_channels_file']}")
+    print(f"  - Log file: {logger.log_file}")
+    
+  

@@ -15,6 +15,9 @@ from mne.time_frequency import psd_array_welch
 from mne.filter import filter_data
 import mne
 from scipy import signal
+import re
+from collections import defaultdict
+
 
 def save_bad_channels(raw_data, file_path, patient_id, movie_base):
     """
@@ -386,7 +389,7 @@ def create_file_paths(patient_id, implant_id, movie_filename, prep_dir, neural_p
     }
     
     # Create reference-specific file paths
-    ref_types = ['avg', 'wm', 'wm_avg', 'bip']
+    ref_types = ['avg', 'wm', 'wm_avg', 'bip','wm_bip','wm_legacy']
     for ref in ref_types:
         file_paths['referenced_files'][ref] = os.path.join(
             sub_prep_dir, f"{movie_base}_referenced_{ref}.fif"
@@ -397,7 +400,8 @@ def create_file_paths(patient_id, implant_id, movie_filename, prep_dir, neural_p
     
     return file_paths
 
-def plot_power_spectra(data, labels, fs_data, freq_range, pat, plot_title="Power Spectral Density (Welch)"):
+def plot_power_spectra(data, labels, fs_data, freq_range, pat, plot_title="Power Spectral Density (Welch)", 
+                       x_scale='linear', y_scale='linear'):
     """
     Compute and plot Power Spectral Density (PSD) for given data using Welch's method.
 
@@ -408,6 +412,8 @@ def plot_power_spectra(data, labels, fs_data, freq_range, pat, plot_title="Power
     - freq_range (tuple): Frequency range for the PSD (fmin, fmax).
     - pat (str): Identifier for the patient or dataset.
     - plot_title (str): Title for the plot.
+    - x_scale (str): Scale for x-axis ('linear' or 'log').
+    - y_scale (str): Scale for y-axis ('linear' or 'log').
 
     Returns:
     - fig: The matplotlib figure object of the PSD plot.
@@ -423,6 +429,12 @@ def plot_power_spectra(data, labels, fs_data, freq_range, pat, plot_title="Power
     fig, ax = plt.subplots(figsize=(10, 6))
     for i, label in enumerate(labels):
         ax.plot(freqs, psd[i, :], label=label)
+    
+    # Set scales based on parameters
+    if x_scale == 'log':
+        ax.set_xscale('log')
+    if y_scale == 'log':
+        ax.set_yscale('log')
     
     # Add labels and legend
     ax.set_title(f'{pat} {freq_range} {plot_title}', fontsize=14)
@@ -562,15 +574,18 @@ class ProcessingLogger:
         log_dir : str
             Directory to save log files
         """
+        from datetime import datetime
+        
         self.patient_id = patient_id
         self.movie_name = movie_name
         self.log_dir = log_dir
-        self.start_time = None
+        self.start_time = datetime.now()
         self.log_entries = []
         
-        # Create log file path
+        # Create log file path with timestamp
         os.makedirs(log_dir, exist_ok=True)
-        self.log_file = os.path.join(log_dir, f"{patient_id}_{movie_name}_processing_log.txt")
+        timestamp = self.start_time.strftime('%Y%m%d_%H%M%S')
+        self.log_file = os.path.join(log_dir, f"{patient_id}_{movie_name}_processing_log_{timestamp}.txt")
         
         # Initialize log file
         self._write_header()
@@ -580,15 +595,15 @@ class ProcessingLogger:
         from datetime import datetime
         
         header = f"""================================================================
-PROCESSING LOG: {self.patient_id} - {self.movie_name}
-================================================================
-Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-Patient: {self.patient_id}
-Movie: {self.movie_name}
-Log file: {self.log_file}
-================================================================
-
-"""
+        PROCESSING LOG: {self.patient_id} - {self.movie_name}
+        ================================================================
+        Timestamp: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}
+        Patient: {self.patient_id}
+        Movie: {self.movie_name}
+        Log file: {self.log_file}
+        ================================================================
+        
+        """
         
         with open(self.log_file, 'w') as f:
             f.write(header)
@@ -596,10 +611,10 @@ Log file: {self.log_file}
     def log_section(self, section_name):
         """Log a new section header."""
         section = f"""
-================================================================
-{section_name.upper()}
-================================================================
-"""
+        ================================================================
+        {section_name.upper()}
+        ================================================================
+        """
         with open(self.log_file, 'a') as f:
             f.write(section)
     
@@ -633,6 +648,14 @@ Log file: {self.log_file}
         """Log file saving operations."""
         self.log_decision("FILE SAVE", f"{file_type}: {file_path}")
     
+    def log_nwb_load(self, nwb_file_path):
+        """Log NWB file loading operations."""
+        self.log_decision("NWB LOAD", f"Loading NWB file: {nwb_file_path}")
+    
+    def log_fif_save(self, fif_file_path, file_description="FIF file"):
+        """Log FIF file saving operations."""
+        self.log_decision(f"{file_description} SAVE", f"{file_description}: {fif_file_path}")
+    
     def log_error(self, error_msg):
         """Log errors or warnings."""
         self.log_decision("ERROR/WARNING", error_msg)
@@ -647,11 +670,16 @@ Log file: {self.log_file}
         """Write the end of processing summary."""
         from datetime import datetime
         
+        end_time = datetime.now()
+        duration = end_time - self.start_time
+        
         footer = f"""
 ================================================================
 END OF PROCESSING
 ================================================================
-Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Start Time: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}
+End Time: {end_time.strftime('%Y-%m-%d %H:%M:%S')}
+Duration: {duration}
 Status: COMPLETED
 ================================================================
 """
@@ -659,7 +687,8 @@ Status: COMPLETED
         with open(self.log_file, 'a') as f:
             f.write(footer)
 
-def plot_psd_batched(raw_data, batch_size=32, freq_bands=None, patient_id="Patient"):
+def plot_psd_batched(raw_data, batch_size=32, freq_bands=None, patient_id="Patient", 
+                     x_scale='linear', y_scale='linear'):
     """
     Create PSD plots using the original approach but in batches of channels.
     Uses the same filtering and plotting style as the original plot_power_spectra.
@@ -674,6 +703,10 @@ def plot_psd_batched(raw_data, batch_size=32, freq_bands=None, patient_id="Patie
         List of frequency band names. Default: ['low', 'middle', 'high']
     patient_id : str, optional
         Patient identifier for plot titles
+    x_scale : str, optional
+        Scale for x-axis ('linear' or 'log', default: 'linear')
+    y_scale : str, optional
+        Scale for y-axis ('linear' or 'log', default: 'linear')
         
     Returns:
     --------
@@ -720,6 +753,8 @@ def plot_psd_batched(raw_data, batch_size=32, freq_bands=None, patient_id="Patie
             freq_range = (8, 30)
         elif freq_band == 'high':
             freq_range = (30, 170)
+        elif freq_band == 'all':
+            freq_range = (.5,200)
         else:
             print(f"⚠️ Unknown frequency band: {freq_band}")
             continue
@@ -748,7 +783,9 @@ def plot_psd_batched(raw_data, batch_size=32, freq_bands=None, patient_id="Patie
                 fs_data, 
                 freq_range, 
                 patient_id, 
-                plot_title=f"Power Spectral Density (Welch) for {freq_band} - Batch {batch_idx + 1}/{num_batches} (Channels {start_idx + 1}-{end_idx})"
+                plot_title=f"Power Spectral Density (Welch) for {freq_band} for {patient_id}-{batch_idx + 1}/{num_batches} (Channels {start_idx + 1}-{end_idx})",
+                x_scale=x_scale,
+                y_scale=y_scale
             )
             figures.append(fig)
     
@@ -757,3 +794,461 @@ def plot_psd_batched(raw_data, batch_size=32, freq_bands=None, patient_id="Patie
     print(f"  - {num_batches} batches per band")
     
     return figures
+
+
+def plot_psd_with_scales(raw_data, scale_type='linear', batch_size=32, freq_bands=None, patient_id="Patient"):
+    """
+    Convenience function to create PSD plots with common scale combinations.
+    
+    Parameters:
+    -----------
+    raw_data : mne.io.Raw
+        The MNE Raw object containing the data
+    scale_type : str, optional
+        Scale type ('linear', 'log_x', 'log_y', 'log_both', default: 'linear')
+    batch_size : int, optional
+        Number of channels per batch (default: 32)
+    freq_bands : list, optional
+        List of frequency band names. Default: ['low', 'middle', 'high']
+    patient_id : str, optional
+        Patient identifier for plot titles
+        
+    Returns:
+    --------
+    list
+        List of figure objects created
+    """
+    # Map scale_type to x_scale and y_scale
+    scale_mapping = {
+        'linear': ('linear', 'linear'),
+        'log_x': ('log', 'linear'),
+        'log_y': ('linear', 'log'),
+        'log_both': ('log', 'log')
+    }
+    
+    if scale_type not in scale_mapping:
+        print(f"⚠️ Unknown scale_type: {scale_type}. Using 'linear' instead.")
+        scale_type = 'linear'
+    
+    x_scale, y_scale = scale_mapping[scale_type]
+    
+    print(f"Creating PSD plots with scale: {scale_type} (x: {x_scale}, y: {y_scale})")
+    
+    return plot_psd_batched(
+        raw_data, 
+        batch_size=batch_size, 
+        freq_bands=freq_bands, 
+        patient_id=patient_id,
+        x_scale=x_scale,
+        y_scale=y_scale
+    )
+
+import re
+from collections import defaultdict
+
+
+def regress_out_noise_by_group(raw, group_def):
+    """
+    Regress group-specific noise channels out of specified channels in an MNE Raw.
+
+    Parameters
+    ----------
+    raw : mne.io.BaseRaw
+        Raw object (will be copied).
+    group_def : dict
+        Dictionary of the form:
+        {
+          "group_name": {
+              "noise": "NoiseChannelName",
+              "channels": ["ch1", "ch2", ...]
+          },
+          ...
+        }
+
+    Returns
+    -------
+    raw_clean : mne.io.BaseRaw
+        New Raw object with noise regressed out per group.
+    """
+    raw_clean = raw.copy()
+    data = raw_clean.get_data()  # shape: (n_channels, n_times)
+    ch_names = raw_clean.ch_names
+
+    for group_name, info in group_def.items():
+        noise_ch = info["noise"]
+        group_chs = info["channels"]
+
+        if noise_ch not in ch_names:
+            raise ValueError(f"Noise channel {noise_ch} for {group_name} not found in raw.ch_names")
+
+        noise_idx = ch_names.index(noise_ch)
+        noise = data[noise_idx, :].copy()
+        noise = noise - noise.mean()  # demean
+
+        denom = np.dot(noise, noise)
+        if denom == 0:
+            raise ValueError(
+                f"Noise channel {noise_ch} for {group_name} appears to be flat (all zeros)."
+            )
+
+        # Restrict to channels that exist in raw
+        group_indices = [ch_names.index(ch) for ch in group_chs if ch in ch_names]
+
+        for ch_idx in group_indices:
+            if ch_idx == noise_idx:
+                # leave the noise channel itself untouched (you'll drop it later)
+                continue
+
+            y = data[ch_idx, :]
+            y_demean = y - y.mean()
+
+            beta = np.dot(y_demean, noise) / denom
+            y_clean = y_demean - beta * noise
+
+            # restore original mean (optional)
+            data[ch_idx, :] = y_clean + y.mean()
+
+    raw_clean._data = data
+    return raw_clean
+
+
+def make_groups_from_prefix(raw, min_group_size=2):
+    groups = defaultdict(list)
+    for ch in raw.ch_names:
+        if ch in raw.info['bads']:
+            continue
+        m = re.match(r'([A-Za-z]+)\d+', ch)
+        if m:
+            prefix = m.group(1)  # e.g., 'LTG' from 'LTG1'
+            groups[prefix].append(ch)
+
+    # drop tiny groups if desired
+    groups = {g: chs for g, chs in groups.items() if len(chs) >= min_group_size}
+    return groups
+
+
+def reref_avg_by_group(raw, groups, use_only_good=True):
+    """
+    Apply group-wise average reference.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Raw object to re-reference (will be copied).
+    groups : dict
+        Mapping {group_name: [ch1, ch2, ...]} defining each depth/bank/grid.
+    use_only_good : bool
+        If True, channels in raw.info['bads'] are excluded from the mean
+        but can still have the reference subtracted (optional behavior).
+
+    Returns
+    -------
+    raw_ref : mne.io.Raw
+        New Raw object with group-wise average reference applied.
+    """
+    raw_ref = raw.copy()
+    ch_names = raw_ref.ch_names
+    bads = set(raw_ref.info['bads']) if use_only_good else set()
+
+    for gname, group_chs in groups.items():
+        # channels that actually exist in this Raw
+        group_chs = [ch for ch in group_chs if ch in ch_names]
+        if len(group_chs) == 0:
+            continue
+
+        # channels used to compute the mean (exclude bads if requested)
+        mean_chs = [ch for ch in group_chs if ch not in bads]
+        if len(mean_chs) < 2:
+            # skip if not enough good channels to form a stable mean
+            continue
+
+        idx_all  = mne.pick_channels(ch_names, include=group_chs)
+        idx_mean = mne.pick_channels(ch_names, include=mean_chs)
+
+        # compute group average over time
+        group_mean = raw_ref._data[idx_mean, :].mean(axis=0, keepdims=True)
+
+        # subtract mean from all channels in the group
+        raw_ref._data[idx_all, :] -= group_mean
+
+    return raw_ref
+
+
+
+def detect_spikes_ref1(raw, ref_name='Ref1',
+                       thresh_z=8.0,
+                       max_width_ms=20.0,
+                       min_separation_ms=5.0):
+    """
+    Detect brief spikes on the Ref1 channel based on the temporal derivative.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Raw object (already filtered as you want).
+    ref_name : str
+        Name of the reference channel (e.g., 'Ref1').
+    thresh_z : float
+        Z-score threshold on the derivative to flag candidate spikes.
+    max_width_ms : float
+        Maximum duration (in ms) of a spike event.
+    min_separation_ms : float
+        Minimum separation between consecutive spikes (to avoid double-counting).
+
+    Returns
+    -------
+    spike_samples : np.ndarray
+        Array of sample indices (int) representing spike centers.
+    """
+    sfreq = raw.info['sfreq']
+    max_width_samp = int(max_width_ms * sfreq / 1000.0)
+    min_sep_samp = int(min_separation_ms * sfreq / 1000.0)
+
+    # Get Ref1 data (first row)
+    ref_data = raw.get_data(picks=[ref_name])[0]
+
+    # First derivative
+    diff = np.diff(ref_data)
+
+    # Robust z-scoring of derivative
+    med = np.median(diff)
+    mad = np.median(np.abs(diff - med))
+    # handle potential zero MAD
+    if mad == 0:
+        raise RuntimeError("MAD is zero for Ref1 derivative; check your data / preprocessing.")
+
+    z = 0.6745 * (diff - med) / mad
+
+    # Candidate indices where derivative is extreme
+    cand_idx = np.where(np.abs(z) > thresh_z)[0]
+
+    if cand_idx.size == 0:
+        return np.array([], dtype=int)
+
+    # Group contiguous indices into events
+    events = []
+    current = [cand_idx[0]]
+    for idx in cand_idx[1:]:
+        if idx == current[-1] + 1:
+            current.append(idx)
+        else:
+            events.append(current)
+            current = [idx]
+    events.append(current)
+
+    # Keep only short events (true spikes)
+    spike_centers = []
+    last_center = -np.inf
+
+    for ev in events:
+        width = ev[-1] - ev[0] + 1
+        if width <= max_width_samp:
+            center = (ev[0] + ev[-1]) // 2
+            # Enforce minimum separation between spike centers
+            if center - last_center >= min_sep_samp:
+                spike_centers.append(center)
+                last_center = center
+
+    # Note: diff is length N-1, so shift indices by 1 to map to raw samples
+    spike_samples = np.array(spike_centers, dtype=int) + 1
+    return spike_samples
+
+
+import numpy as np
+
+def detect_spikes_all_channels(raw,
+                               picks=None,
+                               thresh_z=8.0,
+                               max_width_ms=20.0,
+                               min_separation_ms=5.0):
+    """
+    Detect brief spikes on each channel based on the temporal derivative,
+    using the same logic as `detect_spikes_ref1`.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Raw object (already filtered as you want).
+    picks : list | None
+        Channels to analyze. Can be a list of channel names or indices.
+        If None, all data channels in `raw` are used.
+    thresh_z : float
+        Z-score threshold on the derivative to flag candidate spikes.
+    max_width_ms : float
+        Maximum duration (in ms) of a spike event.
+    min_separation_ms : float
+        Minimum separation between consecutive spikes (to avoid double-counting).
+
+    Returns
+    -------
+    spikes_by_chan : dict
+        Dictionary mapping channel name -> np.ndarray of sample indices
+        representing spike centers for that channel.
+    """
+    sfreq = raw.info['sfreq']
+    max_width_samp = int(max_width_ms * sfreq / 1000.0)
+    min_sep_samp   = int(min_separation_ms * sfreq / 1000.0)
+
+    # Resolve picks
+    if picks is None:
+        picks = mne.pick_types(raw.info, meg=False, eeg=True, seeg=True, ecog=True, misc=False)
+    else:
+        # Let mne handle flexible picks (names or indices)
+        picks = mne.pick_channels(raw.info['ch_names'], include=picks)
+
+    spikes_by_chan = {}
+
+    for pick in picks:
+        ch_name = raw.info['ch_names'][pick]
+        data = raw.get_data(picks=[pick])[0]  # 1D array
+
+        # First derivative
+        diff = np.diff(data)
+
+        # Robust z-scoring of derivative
+        med = np.median(diff)
+        mad = np.median(np.abs(diff - med))
+
+        if mad == 0:
+            # If the channel is flat / no variability, just skip
+            spikes_by_chan[ch_name] = np.array([], dtype=int)
+            continue
+
+        z = 0.6745 * (diff - med) / mad
+
+        # Candidate indices where derivative is extreme
+        cand_idx = np.where(np.abs(z) > thresh_z)[0]
+
+        if cand_idx.size == 0:
+            spikes_by_chan[ch_name] = np.array([], dtype=int)
+            continue
+
+        # Group contiguous indices into events
+        events = []
+        current = [cand_idx[0]]
+        for idx in cand_idx[1:]:
+            if idx == current[-1] + 1:
+                current.append(idx)
+            else:
+                events.append(current)
+                current = [idx]
+        events.append(current)
+
+        # Keep only short events (true spikes)
+        spike_centers = []
+        last_center = -np.inf
+
+        for ev in events:
+            width = ev[-1] - ev[0] + 1
+            if width <= max_width_samp:
+                center = (ev[0] + ev[-1]) // 2
+                # Enforce minimum separation between spike centers
+                if center - last_center >= min_sep_samp:
+                    spike_centers.append(center)
+                    last_center = center
+
+        # Note: diff is length N-1, so shift indices by 1 to map to raw samples
+        spike_samples = np.array(spike_centers, dtype=int) + 1
+        spikes_by_chan[ch_name] = spike_samples
+
+    return spikes_by_chan
+
+
+def interpolate_spikes(raw, spike_samples,
+                       window_ms=10.0):
+    """
+    Interpolate over spike windows across all channels.
+
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Raw object; will be modified in-place unless you copy() before.
+    spike_samples : array-like
+        Sample indices of spike centers (e.g., from detect_spikes_ref1).
+    window_ms : float
+        Half-width of interpolation window in ms (i.e., +/- window_ms around center).
+
+    Returns
+    -------
+    raw_clean : mne.io.Raw
+        Raw object with spikes interpolated (same object as input unless copied).
+    """
+    raw_clean = raw  # modify in-place, or use raw.copy() if you prefer
+    sfreq = raw_clean.info['sfreq']
+    half_win_samp = int(window_ms * sfreq / 1000.0)
+
+    data = raw_clean._data  # shape (n_channels, n_times)
+    n_times = data.shape[1]
+
+    for center in spike_samples:
+        start = max(center - half_win_samp, 1)       # avoid index 0 edge
+        end   = min(center + half_win_samp, n_times - 2)  # avoid last index
+
+        # values just before and after the window
+        left_idx = start - 1
+        right_idx = end + 1
+
+        if left_idx < 0 or right_idx >= n_times:
+            continue  # skip spikes too close to edges
+
+        # Linear interpolation between left_idx and right_idx
+        for ch in range(data.shape[0]):
+            y0 = data[ch, left_idx]
+            y1 = data[ch, right_idx]
+            n  = end - start + 1
+            interp_vals = np.linspace(y0, y1, n, endpoint=True)
+            data[ch, start:end+1] = interp_vals
+
+    return raw_clean
+
+
+def interpolate_spikes_psd(raw, spike_samples, ch_idx, window_ms=10.0, context_ms=250.0):
+    sfreq = raw.info["sfreq"]
+    data = raw._data
+
+    half_win = int(window_ms * sfreq / 1000.0)
+    context = int(context_ms * sfreq / 1000.0)
+    n_times = data.shape[1]
+
+    rng = np.random.default_rng()
+
+    for center in spike_samples:
+        start = max(center - half_win, 1)
+        end = min(center + half_win, n_times - 2)
+        n_fill = end - start + 1
+
+        context_start = max(0, start - context)
+        context_end = min(n_times, end + context + 1)
+
+        left = data[ch_idx, context_start:start]
+        right = data[ch_idx, end + 1:context_end]
+        surround = np.concatenate([left, right])
+
+        if len(surround) < n_fill * 2:
+            continue
+
+        local_mean = np.mean(surround)
+        x = surround - local_mean
+
+        X = np.fft.rfft(x)
+        amplitude = np.abs(X)
+
+        phase = rng.uniform(0, 2 * np.pi, len(amplitude))
+        phase[0] = 0
+
+        synthetic = np.fft.irfft(
+            amplitude * np.exp(1j * phase),
+            n=len(x)
+        )
+
+        offset = (len(synthetic) - n_fill) // 2
+        fill = synthetic[offset:offset + n_fill]
+
+        if np.std(fill) > 0:
+            fill *= np.std(surround) / np.std(fill)
+
+        fill += local_mean
+
+        data[ch_idx, start:end + 1] = fill
+
+    return raw

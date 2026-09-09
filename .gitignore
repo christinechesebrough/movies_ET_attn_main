@@ -62,3 +62,8 @@ logs/
 # Temporary files
 *.tmp
 *.temp 
+# Sphinx build output (regenerate with `make html`)
+docs/_build/
+
+# Large exported audio (derived from source NWB files)
+*.wav

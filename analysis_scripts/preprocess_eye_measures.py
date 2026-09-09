@@ -41,7 +41,6 @@ spec = importlib.util.spec_from_file_location(module_name, module_path)
 trf = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trf)
 
-
 # Define the path to helpers.py
 helper_path = '/Volumes/Samsung/scripts/eyetracking_process/helpers.py'
 
@@ -54,9 +53,7 @@ spec.loader.exec_module(helpers)
 # Now you can use its functions:
 from helpers import interp_bad_samples, combine_left_right, detect_saccades_remodnav, plot_warning_indices_and_saccades_on_gaze, warnings_near_saccades
 
-
 #sys.path.append('/Users/christinechesebrough/Documents/EPIPE-master/Python/')
-
 
 sys.path.insert(0, '/Users/christinechesebrough/Documents/EPIPE-movie_nwb/Python')
 sys.path.append('/Users/christinechesebrough/Documents/iEEG2NWB-main')
@@ -82,7 +79,7 @@ notch_freqs = (60, 120, 180)
 
 # Types of references to use in analyses
 # Must be a list containing at least one of the options: "avg", "bip"
-ref_types = ['avg', 'bip']
+ref_types = ['avg']
 
 n_jobs = 16
 
@@ -109,7 +106,7 @@ k_large = 90
 k_delay = 30
 vis_bads = False
 
-savgol_length = .029
+savgol_length = .019
 
 screen_pix = np.array([1920, 1080])
 screen_cm = np.array([50.92, 28.64])
@@ -133,27 +130,76 @@ def save_fig(fig, filename, sub_dir):
 save_plots = True
 
 #%% Define directories
-#data_dir = '/Volumes/Samsung/Movie_data/movies_nwb_standard'
+data_dir = '/Volumes/Samsung/Movie_data/movies_nwb_standard'
 #data_dir = '/Volumes/Samsung/Movie_data/movies_Jun25_reprocess'
-data_dir = '/Volumes/Samsung/Movie_data/movies_new_nwb'
+#data_dir = '/Volumes/Samsung/movie_data_new/movies_raw_fall25'
 fs_dir = '/Volumes/Samsung/anatomy'
-prep_dir = '/Volumes/Samsung/Movie_data/movies_new_prep'
+prep_dir = '/Volumes/Samsung/Movie_data/movies_prep_standard'
 frame_dir = '/Volumes/Samsung/Movie_data/data/video_frames'
 lum_dir = '/Volumes/Samsung/Movie_data/data/luminance'
 
 et_prep_dir = 'Eye_prep'
+et_qual_dir = 'quality_figs'
 audio_dir = 'Audio'
 neural_prep_dir = 'Neural_prep'
 hfa_dir = 'HFA'
 
-patients = os.listdir(data_dir)
-patients = ['NS210']
+
+patients = [
+ 'LH010',
+ 'NS127',
+ 'NS128',
+ 'NS135',
+ 'NS136',
+ 'NS137',
+ 'NS138',
+ 'NS140',
+ 'NS140',
+ 'NS144',
+ 'NS145',
+ 'NS151',
+ 'NS153',
+ #'NS154',
+  # 'NS164',
+  # 'NS166',
+ # 'NS167',
+  # 'NS174',
+  # 'NS178'
+ ]
+
+#patients = os.listdir(data_dir)
+#patients = ["NS210","NS205",'NS174']#['NS192','NS194','NS178','NS201','NS204','NS205']
+#patients = ['NS178','NS205','NS210','NS211']
 patients.sort()
 
-vid = 'inscapes'
+vid = 'despicable_me_hungarian'
+
+if vid == 'inscapes':
+    movie_keys = ['inscapes']
+if vid == 'the_present':
+    movie_keys = ['the_present','present']
+elif vid == 'despicable_me_english':
+    movie_keys = ['dme', 'despicable_me_english']
+elif vid == 'despicable_me_hungarian':
+    movie_keys = ['dmh', 'despicable_me_hungarian']
+
+
+def extract_movie_from_filename(fname, movie_keys):
+    """
+    Return the matched movie key if found, else None.
+    """
+    fname = fname.lower()
+    for key in movie_keys:
+        # match key as a standalone word or embedded in ses-/task-
+        if re.search(rf'(ses-|task-)?{re.escape(key)}(\d+)?', fname):
+            return key
+    return None
+
+
 
 #%%
 movie_table = pd.read_excel('/Volumes/Samsung/Movie_data/data/electrode_localization/movie_table.xlsx')
+#movie_table = pd.read_csv("/Volumes/Samsung/anatomy/shared_correspondence/movie_subs_master_updated.csv")
 
 if not os.path.exists(lum_dir):
     os.makedirs(lum_dir)
@@ -169,8 +215,8 @@ for pat in patients:
         
         if data_dir == '/Volumes/Samsung/Movie_data/movies_nwb_standard':
             ieeg_dir = '{:s}/{:s}/{:s}'.format(data_dir, pat, imp)
-        elif data_dir == '/Volumes/Samsung/Movie_data/movies_new_nwb':
-            ieeg_dir = '{:s}/{:s}/{:s}/ieeg/'.format(data_dir, pat, imp)
+        elif data_dir == '/Volumes/Samsung/movie_data_new/movies_raw_fall25':
+            ieeg_dir = '{:s}/{:s}/'.format(data_dir, pat)
 
         movies = [f for f in os.listdir(ieeg_dir) if f.endswith('.nwb')]
         
@@ -186,7 +232,12 @@ for pat in patients:
         sub_et_prep_dir = '{:s}/{:s}/{:s}'.format(prep_dir, pat_fs, et_prep_dir)
         
         # Assume `vid` is defined above, e.g. vid = 'despicable_me_english'
-        filtered_movies = [mov for mov in movies if vid in mov]
+        #filtered_movies = [mov for mov in movies if vid in mov]
+        filtered_movies = [mov for mov in movies
+                           if (f"{vid}") in mov
+                           if mov.endswith(".nwb")
+                           and not mov.startswith("._")
+                           and not mov.startswith(".")]
 
         for mov in filtered_movies:
             # Extract the movie file name (strip path if needed)
@@ -215,59 +266,59 @@ for pat in patients:
             tsInfo = nwbInfo['timeseries']
             elecTable = nwbInfo['elecs']
             #%%
-            # Get ieeg data
-           # try: 
-            
+          #       # Get ieeg data
+          #      # try: 
+              
             if 'ieeg' in tsInfo['name'].to_list():
                 ecogContainer = nwb.acquisition.get('ieeg')
                 fs = ecogContainer.rate
                 ecog = nwb2mne(ecogContainer,preload=False)
+                  
+                # # Get coordinates of each electrode that has
+                # try:
+                #     ielvis_df = read_ielvis(sub_fs_dir)
+                #     ch_coords = {}
+                #     nan_array = np.empty((3,)) * np.nan
+                #     for thisChn in ecog.ch_names:
+                #         idx = np.where(ielvis_df['label'] == thisChn)[0]
+                #         if len(idx) == 1:
+                #             xyz = np.array(ielvis_df.iloc[idx[0]]['LEPTO'])
+                #         ch_coords[thisChn] = xyz/1000
+                #     elif len(idx) == 0:
+                #         ch_coords[thisChn] = nan_array
+                #     else:
+                #         raise ValueError('More than 1 found!')
+              # except:
+              #     ch_coords = {}
+              #     for thisChn in ecog.ch_names:
+              #         ch_coords[thisChn] = np.empty((3,)) * np.nan
+          
+            #   # Create `montage` data structure as required by MNE
+            # montage = mne.channels.make_dig_montage(ch_pos=ch_coords, coord_frame='mri')
+            # montage.add_estimated_fiducials(pat_fs, fs_dir)
+            # ecog.set_montage(montage)
+                    
+            # Load audio
+            audioContainer = nwb.acquisition.get('audio')
+            fs_audio = audioContainer.rate
+            audio = audioContainer.data[:]
+            t_audio = np.arange(0, audio.shape[0]) / fs_audio
             
-                # Get coordinates of each electrode that has
-                try:
-                    ielvis_df = read_ielvis(sub_fs_dir)
-                    ch_coords = {}
-                    nan_array = np.empty((3,)) * np.nan
-                    for thisChn in ecog.ch_names:
-                        idx = np.where(ielvis_df['label'] == thisChn)[0]
-                        if len(idx) == 1:
-                            xyz = np.array(ielvis_df.iloc[idx[0]]['LEPTO'])
-                            ch_coords[thisChn] = xyz/1000
-                        elif len(idx) == 0:
-                            ch_coords[thisChn] = nan_array
-                        else:
-                            raise ValueError('More than 1 found!')
-                except:
-                    ch_coords = {}
-                    for thisChn in ecog.ch_names:
-                        ch_coords[thisChn] = np.empty((3,)) * np.nan
+            from scipy.io import wavfile
+            import numpy as np
             
-                # Create `montage` data structure as required by MNE
-                montage = mne.channels.make_dig_montage(ch_pos=ch_coords, coord_frame='mri')
-                montage.add_estimated_fiducials(pat_fs, fs_dir)
-                ecog.set_montage(montage)
-                
-                # Load audio
-                audioContainer = nwb.acquisition.get('audio')
-                fs_audio = audioContainer.rate
-                audio = audioContainer.data[:]
-                t_audio = np.arange(0, audio.shape[0]) / fs_audio
-                
-                from scipy.io import wavfile
-                import numpy as np
-                
-                # Assuming fs_audio and audio are already defined as above
-                
-                # Normalize audio to avoid clipping if necessary
-                audio_norm = audio / np.max(np.abs(audio))
-                
-                # Convert to 16-bit PCM format if needed
-                audio_int16 = np.int16(audio_norm * 32767)
-                
-                # Write to WAV file
-                wavfile.write('exported_audio.wav', int(fs_audio), audio_int16)
-                
-                print("Audio exported to 'exported_audio.wav'")
+            # Assuming fs_audio and audio are already defined as above
+            
+            # Normalize audio to avoid clipping if necessary
+            audio_norm = audio / np.max(np.abs(audio))
+            
+            # Convert to 16-bit PCM format if needed
+            audio_int16 = np.int16(audio_norm * 32767)
+            
+            # Write to WAV file
+            wavfile.write('exported_audio.wav', int(fs_audio), audio_int16)
+            
+            print("Audio exported to 'exported_audio.wav'")     
 
            # except:
                 
@@ -316,12 +367,15 @@ for pat in patients:
             
             #%% Pupil data
             sub_et_prep_dir = '{:s}/{:s}/{:s}'.format(prep_dir, pat_fs, et_prep_dir)
-            
+            sub_et_qual_dir = '{:s}/{:s}'.format(sub_et_prep_dir,et_qual_dir)
+     
             if not os.path.exists(sub_et_prep_dir):
                 os.makedirs(sub_et_prep_dir)
                 
-            #region Notch filter, down sample, add/remove bad channels by inspecting raw trace, save
-            et_prep_filename = '{:s}/{:s}'.format(sub_et_prep_dir, mov.replace('_ieeg.nwb', '_et_prep.npz'))
+            if not os.path.exists(sub_et_qual_dir):
+                os.makedirs(sub_et_qual_dir)
+                      
+            et_prep_filename = '{:s}/{:s}'.format(sub_et_prep_dir, mov.replace('.nwb', '_et_prep.npz'))
             
             if len(nwb.processing) != 0: #not os.path.exists(et_prep_filename) and
                     
@@ -376,7 +430,7 @@ for pat in patients:
                 print(summary)
                 
                 #%%
-                rest = False
+                rest = True
                 if rest:
                     # Calculate gaze velocity (pixels/sec)
                     
@@ -450,12 +504,14 @@ for pat in patients:
                         
                         # Compute luminance 
                         mov_file_parts = mov.split('_')
-                        idx_task = ['task' in part for part in mov_file_parts]
-                        task_str = list(compress(mov_file_parts, idx_task))
-                        task = task_str[0].replace('task-', '')
+                        #idx_task = [vid in part for part in mov_file_parts]
+                        #idx_task = ['task' in part for part in mov_file_parts]
+                        #task_str = list(compress(mov_file_parts, idx_task))
+                        #task = task_str[0].replace('task-', '')
                         
-                        if task == 'despicable':
-                            task = 'despicable_me_english'
+                        task = extract_movie_from_filename(mov, movie_keys)
+                     #   if task == 'despicable':
+                     #       task = 'despicable_me_english'
                         vid_name = movie_table[movie_table.task == task].vid_file.values[0]
                         
                         lum_file = '{:s}/{:s}.npy'.format(lum_dir, vid_name)
@@ -624,7 +680,7 @@ for pat in patients:
                     ax.legend()
                     plt.show()
                     if save_plots:
-                        save_fig(fig, f'{pat}_{mov}_gaze_position_timeseries.png', sub_et_prep_dir)
+                        save_fig(fig, f'{pat}_{mov}_gaze_position_timeseries.png', sub_et_qual_dir)
                     
                     # Plot gaze trajectory with saccades
                     fig, ax = plt.subplots(figsize=(6, 4))
@@ -638,7 +694,7 @@ for pat in patients:
                     ax.invert_yaxis()  # if y=0 is top of screen
                     plt.show()
                     if save_plots:
-                        save_fig(fig, f'{pat}_{mov}_gaze_trajectory_saccades.png', sub_et_prep_dir)
+                        save_fig(fig, f'{pat}_{mov}_gaze_trajectory_saccades.png', sub_et_qual_dir)
                     
                     # Histogram of saccade amplitudes
                     sacc_amplitudes = np.linalg.norm(np.diff(saccade_pos, axis=0), axis=1)
@@ -650,7 +706,7 @@ for pat in patients:
                     ax.set_title(f'Histogram of saccade amplitudes {pat}')
                     plt.show()
                     if save_plots:
-                        save_fig(fig, f'{pat}_{mov}_saccade_amplitude_histogram.png', sub_et_prep_dir)
+                        save_fig(fig, f'{pat}_{mov}_saccade_amplitude_histogram.png', sub_et_qual_dir)
                     
                     # Pupil diameter time series
                     fig, ax = plt.subplots(figsize=(6, 4))
@@ -661,7 +717,7 @@ for pat in patients:
                     ax.set_title(f'Pupil diameter time series (after preprocessing) {pat}')
                     plt.show()
                     if save_plots:
-                        save_fig(fig, f'{pat}_{mov}_pupil_timeseries.png', sub_et_prep_dir)
+                        save_fig(fig, f'{pat}_{mov}_pupil_timeseries.png', sub_et_qual_dir)
                         
                     
                     # Heatmap of gaze positions
@@ -678,7 +734,7 @@ for pat in patients:
                     plt.colorbar(h[3], label='Count')
                     plt.show()
                     if save_plots:
-                        save_fig(fig, f'{pat}_{mov}_gaze_heatmap.png', sub_et_prep_dir)
+                        save_fig(fig, f'{pat}_{mov}_gaze_heatmap.png', sub_et_qual_dir)
                     
                     # Velocity time series (X, Y, total)
                     fig, ax = plt.subplots(figsize=(6, 4))
@@ -692,7 +748,7 @@ for pat in patients:
                     ax.legend()
                     plt.show()
                     if save_plots:
-                        save_fig(fig, f'{pat}_{mov}_gaze_velocity.png', sub_et_prep_dir)
+                        save_fig(fig, f'{pat}_{mov}_gaze_velocity.png', sub_et_qual_dir)
                     
                     
     

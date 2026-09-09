@@ -1,0 +1,7 @@
+patient,implant,movie,savgol_length,num_saccades,num_implausible,max_velocity
+NS210,ses-01,NS210_ses-01_task-inscapes_run-01_ieeg.nwb,0.19,474,0,162.72379750537425
+NS210,ses-01,NS210_ses-01_task-inscapes_run-01_ieeg.nwb,0.03,1312,0,650.0509313580386
+NS210,ses-01,NS210_ses-01_task-inscapes_run-01_ieeg.nwb,0.04,1280,0,490.93185892420354
+NS210,ses-01,NS210_ses-01_task-the_present_run-01_ieeg.nwb,0.19,360,0,144.29813295561985
+NS210,ses-01,NS210_ses-01_task-the_present_run-01_ieeg.nwb,0.03,580,0,294.7836751876878
+NS210,ses-01,NS210_ses-01_task-the_present_run-01_ieeg.nwb,0.04,579,0,266.55977215634215
