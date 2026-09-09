@@ -365,6 +365,43 @@ retained as explicit maps; `long` is the default because it matches the
 existing Tier 1/2 CSVs. A fourth, separate scheme assigns networks from
 hand-curated DK region lists in `compare_attn_states_*` — not reconciled.
 
+## Wavelet frequency grid — a low-frequency limitation
+
+Stage 1 (`extract_wavelet_hdf5.py`) uses a **linear** frequency grid, 1-151 Hz
+in 2 Hz steps (76 bins), with **fixed `n_cycles = 5`**. Consequences:
+
+| band | Hz | wavelet freqs inside it |
+|---|---|---|
+| delta | 1-3 | **2** (exactly 1.0 and 3.0 - the endpoints; 2 Hz is not sampled) |
+| theta | 4-7 | **2** (5.0, 7.0) |
+| alpha | 8-13 | 3 |
+| beta | 14-30 | 8 |
+| gamma | 31-50 | 10 |
+| HFA | 51-150 | **50** |
+
+A linear grid puts two thirds of its resolution above 50 Hz and almost none
+below 10 Hz. Neural oscillatory bands are logarithmically spaced, so a log grid
+is the usual choice. Changing this means re-running Stage 1 over 750 GB, so it
+is recorded rather than fixed.
+
+Fixed `n_cycles = 5` also means wavelet duration scales as 5/f:
+
+```
+   1 Hz  -> 5.00 s long, 0.40 Hz bandwidth
+   3 Hz  -> 1.67 s long, 1.20 Hz bandwidth
+  50 Hz  -> 0.10 s long, 20.0 Hz bandwidth
+```
+
+At 1 Hz the wavelet spans **5 s**, so a 10 s analysis window holds only ~2
+independent estimates and each draws on data +/- 2.5 s beyond its own centre.
+Adjacent 10 s windows at delta are therefore smeared into one another well
+beyond the nominal 75% overlap.
+
+**Interpretation guidance:** delta and theta estimates from this grid are thin
+and temporally smeared. Treat low-frequency results as coarse. This is a
+property of the frequency grid and `n_cycles`, not of the windowing or the
+band-averaging.
+
 ## Conventions
 
 ### Script docstring contract
