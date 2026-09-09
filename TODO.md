@@ -109,8 +109,29 @@ Strictly ordered; each blocks the next.
   downstream output at all.**
   The `include` / `exclude_reason` / `exclude_modality` columns are left BLANK
   by design — file presence records what was processed, never what should be.
-  Remaining: fill those in by hand, then make the pipeline scripts read this
-  table instead of hand-edited patient lists.
+  Gaze heuristic implemented (Christine's rule: exclude if under 70% gaze data
+  present in EACH eye). Emitted as `suggested_include`, advisory only, since she
+  has stated there are exceptions. Per-eye present fractions are reported for
+  both the pre- and post-interp metrics.
+
+  **[?] OPEN DECISION — pre- or post-interp?** The choice moves 9 recordings:
+  pre-interp passes 60 / fails 25; post-interp passes 51 / fails 34. The 9 that
+  flip sit at 0.72-0.80 pre but 0.49-0.68 post (NS151, NS151_02, NS153,
+  NS174_02, NS174_03 english; NS144, NS151 hungarian; NS136, NS151 inscapes).
+  Note post-interp missing is HIGHER than pre in 97.8% of rows, so it is the
+  conservative metric, not a gap-filled one. `suggested_include` currently uses
+  pre-interp.
+
+  **6 recordings fail the 70% rule but were processed downstream anyway** —
+  either the stated exceptions or oversights; worth confirming which:
+  NS155_02 english (0.52/0.53), NS190 english run-2 (0.76/0.54),
+  NS128_02 hungarian (0.67/0.66), NS167 hungarian (0.56/0.68),
+  NS153 inscapes (0.61/0.64), NS210 inscapes (0.77/0.66).
+  NS190 and NS210 fail on ONE eye only — the per-eye rule catches asymmetry
+  that an averaged-across-eyes rule would hide.
+
+  Remaining: settle the pre/post question, fill `include` by hand, then make
+  the pipeline scripts read this table instead of hand-edited patient lists.
   Re-running never clobbers annotations; it writes `_rescan.csv` alongside.
 
 - [ ] **A5b. Original (superseded) item: inclusion/exclusion logging.** Which recordings are in or out, and

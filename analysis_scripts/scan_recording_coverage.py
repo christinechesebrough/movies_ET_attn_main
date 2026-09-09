@@ -22,15 +22,22 @@ Output:
         has_power_tier1         full-resolution power CSV present (per band)
         has_power_tier2         windowed power CSV present (per band)
         has_fooof               rolling-FOOOF output present
-        eye_missing_frac        worst pre-interpolation missing fraction
-        eye_missing_post_interp worst post-interpolation missing fraction
+        right_present / left_present              per-eye gaze present fraction
+        right_present_post / left_present_post    same, post-interp metric
+        gaze_pass_70        both eyes >= GAZE_MIN_PRESENT (pre-interp)
+        gaze_pass_70_post   both eyes >= GAZE_MIN_PRESENT (post-interp)
+        suggested_include   gaze_pass_70 - a SUGGESTION, not a decision
         include                 BLANK - to be filled in by hand
         exclude_reason          BLANK - to be filled in by hand
         exclude_modality        BLANK - ieeg / eye / both
 
-    The last three columns are deliberately empty: presence of files says what
-    was processed, never whether it *should* be. That judgement is Christine's,
-    and recording it is the entire point of the table.
+    The include/exclude columns are deliberately empty: presence of files says
+    what was processed, never whether it *should* be. That judgement is
+    Christine's, and recording it is the entire point of the table.
+
+    `suggested_include` applies Christine's standing heuristic - exclude any
+    recording with under 70% gaze data present in EACH eye - but she has stated
+    there are exceptions, so it is advisory only. Fill `include` to override.
 
 Processing:
     1. Enumerate recordings from preprocessed .fif filenames.
@@ -72,6 +79,11 @@ WAVELET_GLOBS = [
 TIER1_GLOB    = os.path.join(DATA_ROOT, 'full_raw_log_power_*', 'power_log_*_{vid}_*', '{pat}', '*.csv')
 TIER2_GLOB    = os.path.join(DATA_ROOT, 'windowed_power_*', '*_{vid}_*', '{pat}', '*.csv')
 FOOOF_GLOB    = os.path.join(DATA_ROOT, 'rolling_fooof_*{vid}*', '{pat}', '*.csv')
+
+# Christine's standing gaze heuristic: require this fraction of gaze data
+# present in EACH eye independently. Exceptions exist and are handled by
+# filling the `include` column by hand.
+GAZE_MIN_PRESENT = 0.70
 
 # .fif suffixes that indicate a usable preprocessed/referenced recording
 PREPROC_MARKERS = ('referenced_avg', 'preprocessed', 'prep_ref_avg', 'referenced_wm')
@@ -131,9 +143,15 @@ def load_eye_quality():
     """
     Read the existing missing_data_{video}.csv eye-quality tables.
 
-    These already log eye-tracking quality per recording (missing-sample
-    fractions before and after interpolation) but carry no include/exclude
-    decision. Returns {(patient, video): (worst_pre, worst_post)}.
+    These already log gaze quality per recording but carry no include/exclude
+    decision. They are keyed per RUN, not per patient - 91 english rows across
+    33 patients - with the run identified inside the `Movie` column (an .nwb
+    filename), so the join must use it.
+
+    Within an eye, the x and y missing fractions were verified identical
+    (2026-09-09), so one number per eye is sufficient.
+
+    Returns {(patient, video, run): {right/left present, pre and post}}.
     """
     out = {}
     for vid in VIDEO_ALIASES:
@@ -141,13 +159,21 @@ def load_eye_quality():
         if not os.path.exists(path):
             continue
         df = pd.read_csv(path)
-        pre_cols = [c for c in df.columns if c.endswith('_missing')]
-        post_cols = [c for c in df.columns if c.endswith('_missing_post_interp')]
         for _, row in df.iterrows():
             pat = str(row['Patient'])
-            pre = max([row[c] for c in pre_cols if pd.notna(row[c])], default=None)
-            post = max([row[c] for c in post_cols if pd.notna(row[c])], default=None)
-            out[(pat, vid)] = (pre, post)
+            m_run = re.search(r'run-([0-9]+)', str(row.get('Movie', '')))
+            run = f"{int(m_run.group(1)):02d}" if m_run else '01'
+
+            def present(col):
+                v = row.get(col)
+                return (1.0 - float(v)) if pd.notna(v) else None
+
+            out[(pat, vid, run)] = {
+                'right_present':      present('x_right_missing'),
+                'left_present':       present('x_left_missing'),
+                'right_present_post': present('x_right_missing_post_interp'),
+                'left_present_post':  present('x_left_missing_post_interp'),
+            }
     return out
 
 
@@ -188,12 +214,24 @@ def scan():
         rec['has_power_tier2'] = has_any(TIER2_GLOB,   vid=vid, pat=pat)
         rec['has_fooof']       = has_any(FOOOF_GLOB,   vid=vid, pat=pat)
 
-        pre, post = eye.get((pat, vid), (None, None))
-        # correspondence sheets and eye tables sometimes drop the _02 suffix
-        if pre is None:
-            pre, post = eye.get((pat.split('_')[0], vid), (None, None))
-        rec['eye_missing_frac'] = pre
-        rec['eye_missing_post_interp'] = post
+        # eye tables sometimes drop the _02 implant suffix from the patient id
+        q = (eye.get((pat, vid, run))
+             or eye.get((pat.split('_')[0], vid, run))
+             or eye.get((pat, vid, '01'))
+             or eye.get((pat.split('_')[0], vid, '01'))
+             or {})
+        rec.update({k: q.get(k) for k in
+                    ['right_present', 'left_present',
+                     'right_present_post', 'left_present_post']})
+
+        def _pass(a, b):
+            if rec.get(a) is None or rec.get(b) is None:
+                return None
+            return bool(rec[a] >= GAZE_MIN_PRESENT and rec[b] >= GAZE_MIN_PRESENT)
+
+        rec['gaze_pass_70'] = _pass('right_present', 'left_present')
+        rec['gaze_pass_70_post'] = _pass('right_present_post', 'left_present_post')
+        rec['suggested_include'] = rec['gaze_pass_70']
 
         rec['include'] = ''
         rec['exclude_reason'] = ''
@@ -202,7 +240,9 @@ def scan():
     cols = ['patient', 'session', 'video', 'run',
             'has_preprocessed', 'has_bad_channels', 'has_bad_windows',
             'has_wavelet', 'has_power_tier1', 'has_power_tier2', 'has_fooof',
-            'eye_missing_frac', 'eye_missing_post_interp',
+            'right_present', 'left_present',
+            'right_present_post', 'left_present_post',
+            'gaze_pass_70', 'gaze_pass_70_post', 'suggested_include',
             'include', 'exclude_reason', 'exclude_modality']
     df = pd.DataFrame(list(records.values()))
     return df.reindex(columns=cols).sort_values(['video', 'patient', 'session', 'run'])
