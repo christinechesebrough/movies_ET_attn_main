@@ -99,8 +99,11 @@ Strictly ordered; each blocks the next.
   a rolling mean. It also did NOT z-score these files: `normalize = False`, and
   the outputs are named `windowed_unnormed_*`.
 
-  **Implication.** The old Tier 1/2 values lost roughly 70% of the dynamic range
-  of log amplitude to that epsilon, nonlinearly and per-channel — which is why
+  **Implication.** The old Tier 1/2 values lost roughly **41%** of the dynamic
+  range of log amplitude to that epsilon, nonlinearly and per-channel
+  (measured log-power SD 0.41 -> implied log-amplitude SD 0.205; old
+  log(amp+eps) SD 0.12; 1 - 0.12/0.205 = 41%. An earlier note in this file said
+  70%, which wrongly compared against the log-POWER SD without halving it) — which is why
   per-channel r is 0.84 rather than 1.0. Downstream z-scoring removes the offset
   but cannot undo nonlinear compression. **The new pipeline is cleaner, not just
   different; do not tune it to reproduce the old output.** Old and new results
@@ -301,8 +304,11 @@ Strictly ordered; each blocks the next.
   a rolling mean. It also did NOT z-score these files: `normalize = False`, and
   the outputs are named `windowed_unnormed_*`.
 
-  **Implication.** The old Tier 1/2 values lost roughly 70% of the dynamic range
-  of log amplitude to that epsilon, nonlinearly and per-channel — which is why
+  **Implication.** The old Tier 1/2 values lost roughly **41%** of the dynamic
+  range of log amplitude to that epsilon, nonlinearly and per-channel
+  (measured log-power SD 0.41 -> implied log-amplitude SD 0.205; old
+  log(amp+eps) SD 0.12; 1 - 0.12/0.205 = 41%. An earlier note in this file said
+  70%, which wrongly compared against the log-POWER SD without halving it) — which is why
   per-channel r is 0.84 rather than 1.0. Downstream z-scoring removes the offset
   but cannot undo nonlinear compression. **The new pipeline is cleaner, not just
   different; do not tune it to reproduce the old output.** Old and new results
