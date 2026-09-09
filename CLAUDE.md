@@ -17,6 +17,8 @@ Research code for an in-progress paper.
 - Reusable functions live in `src/`. Scripts import them by bare module name
   (`from eeg_preproc_helpers import ...`) via `sys.path` manipulation.
 
+Working backlog with dependencies and ordering: **`TODO.md`**.
+
 ## Current state (as of 2026-09-09)
 
 Recreating a previously working pipeline against **newly added and
