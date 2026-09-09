@@ -124,21 +124,51 @@ Tier 3 columns, plus:
                  Internal_HighConf_within_timepoint_dev_0.6
                  External_HighConf_within_timepoint_dev_0.6   (55 cols)
 ```
-This is what Stage 4 actually consumes. **`0.6` is a hard-coded threshold
-baked into the column names** — changing it renames columns downstream.
+This is what Stage 4 actually consumes. The `[0.6 0.6]` in the label column
+names is `z_thresh` — a **tunable parameter interpolated into the column name**,
+not a hardcoded constant. Changing it renames columns downstream.
 
-#### Two producers are MISSING from this repo
+#### The attention-label branch (eye-tracking side)
 
-Nothing in the repo writes `all_power_wide.csv` (Tier 2 -> 3) or
-`*_power_eye_merged.csv` (Tier 3 -> 4, including all attention labels and the
-Mahalanobis group-deviation measures). Nine Stage 4 scripts *read* these
-columns; none *create* them. Those steps were likely run interactively or live
-outside this repo. **Recovering or rewriting them is required for
-reproducibility** — see TODO D2.
+Labels are produced by the eye-tracking chain, not the power chain:
 
-Related eye-side producers that ARE present:
-`eyetracking_process_scripts/prePCA_agg_norm.py` (aggregate+normalize eye
-features) and `analysis_scripts/robust_pca_gaze_features.py` (PCs).
+```
+eyetracking_process_scripts/
+  compute_eye_measures.py        per-patient eye measures
+  prePCA_agg_norm.py             aggregate across patients + normalize
+        |
+analysis_scripts/
+  robust_pca_gaze_features.py    robust PCA -> PC1..PC4
+        |
+  examine_separate_PCs_together.py
+        computes group_deviation_mahal, group_dev_mahal_z, mahal_time_z
+        two deviation schemes:
+            within_subject_dev   -> group_dev_mahal_z
+            within_timepoint_dev -> mahal_time_z
+        emits per scheme:
+            Attention_Label_{scheme}_{z_thresh}
+            Internal_HighConf_{scheme}_{z_thresh_int}
+            External_HighConf_{scheme}_{z_thresh_ext}
+        writes {vid}_features_df_{z_thresh}.csv
+               all_subject_attention_counts_both_schemes_{z_thresh}.csv
+```
+
+This branch **needs cleanup** (Christine, 2026-09-09) — treat its current
+ordering as provisional.
+
+#### What is genuinely missing from the repo
+
+Two joins are unaccounted for:
+
+1. **Tier 2 -> Tier 3** — whatever builds `all_power_wide.csv`: reshaping
+   per-band wide windowed CSVs into one long table with bands as columns and
+   the atlas metadata rows lifted into columns.
+2. **Tier 3 -> Tier 4** — the join that merges the labeled eye-feature frame
+   from `examine_separate_PCs_together.py` onto long power, producing
+   `*_power_eye_merged.csv`.
+
+The label *computation* is version controlled; these two *reshape/merge* steps
+are not. See TODO B4.
 
 #### Bridge target for the new wavelet pipeline
 
