@@ -62,6 +62,21 @@ Strictly ordered; each blocks the next.
   `SOURCE='robust_z'` reads the pre-z-scored file instead and is NOT comparable
   to old outputs.
 
+- [x] **B3a. `bandpass_from_wavelet.py` windowing VERIFIED** 2026-09-09
+  (NS127_02, english, gamma). Independently reimplemented the full path —
+  robust median/MAD over the continuous series, then rolling-mean windowing —
+  and reproduced the stored `pow_dat_z_windowed` **bit-for-bit** (max abs
+  difference 0.000e+00). Window centres identical; stored `robust_median` and
+  `robust_sd` match recomputation exactly.
+  Establishes: no implementation bug in the windowing or robust-z arithmetic,
+  and the z-then-window order is as documented.
+  Does NOT establish: correctness of the method choices (see B3), or that this
+  holds beyond one recording/band.
+
+- [ ] **B3b. `wavelet_extract_windows.py` (`wavelet_continuous_z`) NOT yet
+  verified.** The other Stage 2 branch — full frequency resolution, 621 GB,
+  42 files. Same treatment as B3a would be worthwhile before it feeds anything.
+
 - [~] **B3. Validation — FIRST RESULT (NS127_02, english, gamma).**
   Wavelet-derived vs Hilbert/bandpass band power, same recording, same windows:
 
@@ -266,6 +281,21 @@ Strictly ordered; each blocks the next.
   `SOURCE='log_band_power'` reproduces old Tier 2 (unnormed rolling mean);
   `SOURCE='robust_z'` reads the pre-z-scored file instead and is NOT comparable
   to old outputs.
+
+- [x] **B3a. `bandpass_from_wavelet.py` windowing VERIFIED** 2026-09-09
+  (NS127_02, english, gamma). Independently reimplemented the full path —
+  robust median/MAD over the continuous series, then rolling-mean windowing —
+  and reproduced the stored `pow_dat_z_windowed` **bit-for-bit** (max abs
+  difference 0.000e+00). Window centres identical; stored `robust_median` and
+  `robust_sd` match recomputation exactly.
+  Establishes: no implementation bug in the windowing or robust-z arithmetic,
+  and the z-then-window order is as documented.
+  Does NOT establish: correctness of the method choices (see B3), or that this
+  holds beyond one recording/band.
+
+- [ ] **B3b. `wavelet_extract_windows.py` (`wavelet_continuous_z`) NOT yet
+  verified.** The other Stage 2 branch — full frequency resolution, 621 GB,
+  42 files. Same treatment as B3a would be worthwhile before it feeds anything.
 
 - [~] **B3. Validation — FIRST RESULT (NS127_02, english, gamma).**
   Wavelet-derived vs Hilbert/bandpass band power, same recording, same windows:
