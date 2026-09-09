@@ -76,10 +76,36 @@ Strictly ordered; each blocks the next.
   **Not interchangeable.** ~30% unshared variance within-channel. The slope of
   3.33 means the wavelet-derived power has ~3.3x the dynamic range, so this is
   a genuine methodological difference, not scaling.
-  **Hypothesis (UNVERIFIED):** the old chain low-pass filtered the power
-  timecourse before windowing - the script is named
-  `lowpass_power_to_windows.py` - which would compress its variance. Check the
-  filtering code before accepting this explanation.
+  **RESOLVED 2026-09-09. Two compounding causes, neither one filtering:**
+
+  1. **Amplitude vs power.** The old chain computes
+     `power = np.abs(signal.hilbert(...))` — the *amplitude envelope*, despite
+     the variable name (`extract_power_fc.py:810-811`, `extract_power_es.py:626`,
+     the code's own comment says "raw envelope"). The new chain computes wavelet
+     POWER (`representation = log10_mean_linear_wavelet_power_...`).
+     Power = amplitude^2, so in log units this alone is a factor of exactly 2
+     (verified by simulation: slope 2.00, r 1.0000).
+
+  2. **The `+ 1e-6` epsilon compresses the old values.** The old chain does
+     `np.log10(pow_dat_raw + 1e-6)`. Typical old amplitude is ~2.75e-6, so the
+     epsilon is **36% of the signal** — not a numerical guard at this scale. It
+     flattens the low end nonlinearly, cutting SD from ~0.42 to ~0.12 and
+     pushing the slope above 2. Simulation with the epsilon: slope 2.74, SD 0.15
+     vs 0.42 (measured: 3.33, 0.12 vs 0.41; residual gap is the frequency-bin
+     averaging, which also differs).
+
+  **Ruled out:** `lowpass_power_to_windows.py` performs NO filtering — no
+  butter/filtfilt/savgol/decimate anywhere in it, despite the name; it only does
+  a rolling mean. It also did NOT z-score these files: `normalize = False`, and
+  the outputs are named `windowed_unnormed_*`.
+
+  **Implication.** The old Tier 1/2 values lost roughly 70% of the dynamic range
+  of log amplitude to that epsilon, nonlinearly and per-channel — which is why
+  per-channel r is 0.84 rather than 1.0. Downstream z-scoring removes the offset
+  but cannot undo nonlinear compression. **The new pipeline is cleaner, not just
+  different; do not tune it to reproduce the old output.** Old and new results
+  are not directly comparable, which reinforces deriving all three video
+  conditions afresh (see the bridge-condition note in CLAUDE.md).
   Also: the new extraction has **145 channels vs the old 147** for this
   recording (missing RDh15, RDh16) - worth understanding.
   Remaining: repeat across bands, recordings and videos before drawing a
@@ -252,10 +278,36 @@ Strictly ordered; each blocks the next.
   **Not interchangeable.** ~30% unshared variance within-channel. The slope of
   3.33 means the wavelet-derived power has ~3.3x the dynamic range, so this is
   a genuine methodological difference, not scaling.
-  **Hypothesis (UNVERIFIED):** the old chain low-pass filtered the power
-  timecourse before windowing - the script is named
-  `lowpass_power_to_windows.py` - which would compress its variance. Check the
-  filtering code before accepting this explanation.
+  **RESOLVED 2026-09-09. Two compounding causes, neither one filtering:**
+
+  1. **Amplitude vs power.** The old chain computes
+     `power = np.abs(signal.hilbert(...))` — the *amplitude envelope*, despite
+     the variable name (`extract_power_fc.py:810-811`, `extract_power_es.py:626`,
+     the code's own comment says "raw envelope"). The new chain computes wavelet
+     POWER (`representation = log10_mean_linear_wavelet_power_...`).
+     Power = amplitude^2, so in log units this alone is a factor of exactly 2
+     (verified by simulation: slope 2.00, r 1.0000).
+
+  2. **The `+ 1e-6` epsilon compresses the old values.** The old chain does
+     `np.log10(pow_dat_raw + 1e-6)`. Typical old amplitude is ~2.75e-6, so the
+     epsilon is **36% of the signal** — not a numerical guard at this scale. It
+     flattens the low end nonlinearly, cutting SD from ~0.42 to ~0.12 and
+     pushing the slope above 2. Simulation with the epsilon: slope 2.74, SD 0.15
+     vs 0.42 (measured: 3.33, 0.12 vs 0.41; residual gap is the frequency-bin
+     averaging, which also differs).
+
+  **Ruled out:** `lowpass_power_to_windows.py` performs NO filtering — no
+  butter/filtfilt/savgol/decimate anywhere in it, despite the name; it only does
+  a rolling mean. It also did NOT z-score these files: `normalize = False`, and
+  the outputs are named `windowed_unnormed_*`.
+
+  **Implication.** The old Tier 1/2 values lost roughly 70% of the dynamic range
+  of log amplitude to that epsilon, nonlinearly and per-channel — which is why
+  per-channel r is 0.84 rather than 1.0. Downstream z-scoring removes the offset
+  but cannot undo nonlinear compression. **The new pipeline is cleaner, not just
+  different; do not tune it to reproduce the old output.** Old and new results
+  are not directly comparable, which reinforces deriving all three video
+  conditions afresh (see the bridge-condition note in CLAUDE.md).
   Also: the new extraction has **145 channels vs the old 147** for this
   recording (missing RDh15, RDh16) - worth understanding.
   Remaining: repeat across bands, recordings and videos before drawing a
