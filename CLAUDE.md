@@ -397,8 +397,43 @@ independent estimates and each draws on data +/- 2.5 s beyond its own centre.
 Adjacent 10 s windows at delta are therefore smeared into one another well
 beyond the nominal 75% overlap.
 
-**Interpretation guidance:** delta and theta estimates from this grid are thin
-and temporally smeared. Treat low-frequency results as coarse. This is a
+### Two separate defects, often confused
+
+**Spectral** — is the band measured properly in frequency? Set by the grid.
+**Temporal** — how much of a window's value comes from outside it? Set by
+`n_cycles/f` relative to the analysis window.
+
+Current extraction (linear 2 Hz, nc=5), and the proposed 0.5-30 Hz log
+re-extraction (nc 3 -> 10 -> 5):
+
+| band | spectral coverage | spectral leak | temporal leak (10 s win) |
+|---|---|---|---|
+| sub-delta 0.5-1 | 40% -> **100%** | 50% -> 45% | 60% (unchanged - intrinsic) |
+| delta 1-3 | 40% -> **100%** | 50% -> **22%** | 40% |
+| theta 4-7 | 100% | 41% -> 29% | 18% |
+| alpha 8-13 | 100% | 44% -> 22% | 12% |
+| beta 14-30 | 100% | 32% -> 18% | 3% |
+
+**Delta is usable after re-extraction** - spectrally it becomes the best low
+band (22% leak, better than theta). Its 40% temporal leak means delta changes
+resolve on a ~15-20 s timescale, not 10 s; state that rather than dropping the
+band. Delta is additionally available from the bandpass route at 0.75 s.
+
+**Sub-delta is the band with a real constraint**: 60% temporal leak in a 10 s
+window, because `nc=3` at 0.5 Hz is a 6 s wavelet. Fix by windowing that range
+at 30 s, not by changing the extraction.
+
+### Full-range re-extraction, if ever done
+
+0.5-151 Hz, ~100 log points, `n_cycles` 3 -> 15 would fix every band:
+HFA 50 freqs/30% leak -> 18 freqs/**6%** leak; gamma 46% -> 22%. At nc=5 a
+150 Hz wavelet has 60 Hz bandwidth and is barely frequency-specific - the
+linear grid's cost at the top mirrors its cost at the bottom.
+Cost ~21 GB/recording, ~1.1 TB total. Deferred: gamma and HFA are currently
+usable, the low bands were not.
+
+**Interpretation guidance:** delta and theta estimates from the CURRENT grid
+are thin and temporally smeared. Treat low-frequency results as coarse. This is a
 property of the frequency grid and `n_cycles`, not of the windowing or the
 band-averaging.
 
