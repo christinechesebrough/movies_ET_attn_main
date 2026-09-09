@@ -123,6 +123,32 @@ only at the analysis and plotting stages. Consequences worth deciding on:
 Excluding earlier avoids both but creates discontinuities the transform can ring
 on, and manual marking does not scale. Not yet decided.
 
+**Partly resolved 2026-09-09 — the norming concern is much smaller than feared.**
+
+Order in `bandpass_from_wavelet.py`: robust z-score over the FULL continuous
+timeseries (line 429), then window (line 438). So the reference statistics do
+include bad epochs. But they are **median and MAD**, not mean and SD
+(`zscore_method = "median_MAD"`, scale 1.4826), and the median has a 50%
+breakdown point.
+
+Measured artifact burden across 59 QC files: median **1.3%** of windows bad,
+mean 2.3%, worst 16.5% (NS145 hungarian). **No recording exceeds 20%.**
+
+Simulated effect on the reference at those levels:
+
+| contamination | MAD inflation | SD inflation if mean/SD were used |
+|---|---|---|
+| 1.3% | 1.4% | 52% |
+| 2.3% | 2.5% | 82% |
+| 16.5% | 21% | 316% |
+
+So the robust statistics keep contamination to ~1-2% for a typical recording.
+Remaining caveat: at 16.5% bad, MAD inflates ~21%, shrinking that recording's
+z-scores ~17% relative to a clean reference — a per-recording scaling that
+varies with artifact burden, introducing minor between-subject inconsistency.
+Fix if wanted: compute median/MAD on good samples only, then apply to all
+samples. A few lines in `robust_zscore_channels`; no change to pipeline order.
+
 ---
 
 ## Pipeline 1 — Power (main)
