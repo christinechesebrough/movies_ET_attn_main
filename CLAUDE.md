@@ -44,9 +44,14 @@ derived through the old Hilbert/bandpass chain; deriving hungarian through the
 new wavelet chain would make any three-condition gradient partly an artifact of
 method rather than of stimulus.
 
-This is why the pipeline is being rebuilt from the top for all three videos
-rather than hungarian simply being backfilled. **Do not propose backfilling
-hungarian through the old pipeline** — uniform derivation is the point.
+This is why the pipeline is being rebuilt from the top for all three videos.
+**Do not propose backfilling hungarian through the old pipeline** — uniform
+derivation is the point.
+
+**The old pipeline is to be PRESERVED, not replaced.** Its outputs are the
+reference against which the wavelet results get validated. Do not propose
+deleting, rewriting, or "cleaning up" the old `extract_power_*` /
+`lowpass_power_to_windows.py` chain.
 
 It also means the existing Tier 3/4 files (english + inscapes, 2026-05-17) are
 **reference and validation artifacts, not the target**. They are what the new
@@ -196,12 +201,22 @@ Tier 2 windowed data exists for all three videos (english 17 patients,
 hungarian 13, inscapes 15), but **the Tier 3 aggregate contains only
 despicable_me_english and inscapes**, and there is no `dmh_power_eye_merged.csv`.
 
-The hungarian condition is therefore absent from everything Stage 4 reads.
+Hungarian is absent from **this branch only**. The old pipeline has two
+parallel Stage 4 branches and hungarian completed the other one:
 
-This is a **consequence of the deliberate restart, not an oversight** — see
-"Design: three conditions" above. The fix is not to re-run the old chain on
-hungarian; it is to rebuild all three conditions uniformly through the wavelet
-pipeline. These files remain useful as validation references for B3.
+```
+BRANCH A  power + eye merge          BRANCH B  rolling FOOOF / oscillatory peaks
+  windowed_power_10s/                  rolling_fooof_low_mid_{vid}_26Jun26/
+  -> all_power_wide.csv                -> rolling_fooof_aggregated_26Jun26/
+  -> *_power_eye_merged.csv            (english 13 pat, hungarian 16 pat)
+  (english + inscapes only, May 17)    Jun-Jul 2026 — hungarian COMPLETE here
+  -> compare_attn_states_*             -> aggregate_oscillatory_peaks.py
+```
+
+So hungarian was pushed through the FOOOF branch but not re-merged into
+Branch A's aggregates. Both branches are **old-pipeline outputs to preserve**,
+not gaps to backfill — the new wavelet pipeline will re-derive all three
+conditions uniformly, and these files serve as validation references (B3).
 
 #### What is genuinely missing from the repo
 

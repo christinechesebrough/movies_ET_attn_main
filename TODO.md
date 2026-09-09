@@ -79,15 +79,15 @@ Strictly ordered; each blocks the next.
      power to produce `*_power_eye_merged.csv`.
   Both were likely done interactively. Smaller than first assessed, but still
   the undocumented seam between the power and eye branches.
-  **Purpose is to re-derive, not to backfill.** `all_power_wide.csv`
-  (2026-05-17) predates the hungarian windowed data (2026-06-26) and holds only
-  despicable_me_english + inscapes. Do NOT fix this by pushing hungarian through
-  the old chain: hungarian is the bridge condition between english and inscapes,
-  so all three must be derived identically or the comparison is confounded by
-  method. What B4 needs is the reshape/merge *logic*, reimplemented to run on
-  wavelet-derived Tier 2 output for all three videos.
-  The existing Tier 3/4 files become validation references for B3.
-  *Blocks B5. Now depends on B2.*
+  **Purpose is to re-derive, not to backfill.** Hungarian IS complete in the
+  old pipeline's rolling-FOOOF branch (16 patients, Jun-Jul 2026); it is absent
+  only from Branch A's May 17 power+eye aggregates. Do not push hungarian
+  through the old Branch A chain to patch that — as the bridge condition it must
+  be derived identically to english and inscapes, which means all three go
+  through the wavelet pipeline. B4 needs the reshape/merge *logic*,
+  reimplemented on wavelet-derived Tier 2 for all three videos.
+  Old outputs are preserved as validation references for B3.
+  *Blocks B5. Depends on B2.*
 
 - [ ] **B5. Run Stage 4 unchanged** on the new data.
   *Blocked by B3 and B4.*
