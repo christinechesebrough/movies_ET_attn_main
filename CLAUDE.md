@@ -31,9 +31,11 @@ Active workstream: the wavelet chain (Stages 1–3 below).
 
 ```
 STAGE 0  preprocessing
-         movies_ieeg_preprocess_batch.py
-         save_with_bad_chans.py
-         label_bad_windows_continous.py       -> bad-window labels
+         movies_ieeg_preprocess_batch.py      -> handles bad channels itself
+         label_bad_windows_continous.py       -> manual bad-window marking on
+                                                 continuous .fif, BEFORE the
+                                                 wavelet transform
+         [save_with_bad_chans.py]             -> backfill only, see below
               |
 STAGE 1  master time-frequency representation
          extract_wavelet_hdf5.py
@@ -56,6 +58,8 @@ STAGE 4  analyses (all read CSV via pd.read_csv)
          extract_all_fooof.py, aggregate_oscillatory_peaks.py
          robust_pca_gaze_features.py, examining_shared_PC_features.py
          compare_attn_states_*.py
+         find_artifactual_windows.py          -> automated MAD detector, runs on
+                                                 extracted CSV; QC cross-check
 ```
 
 ### The CSV boundary — most important fact in this repo
@@ -96,6 +100,36 @@ Structurally identical, three vocabularies. Standardize only *after* Stage 3 is
 validated — otherwise renames and numerical differences get debugged together.
 
 ---
+
+## Bad channels and bad windows
+
+**Bad channels** are handled inside `movies_ieeg_preprocess_batch.py`
+(loads `bad_channels_file`, sets `info['bads']`, supports manual marking).
+
+`save_with_bad_chans.py` is **not a pipeline stage.** It reconciles legacy data:
+finds `*bad_channels*.txt`, picks the most recent, merges into the FIF's
+`info['bads']`. Use only to backfill older recordings. Note it also carries
+unrelated audio-export code (`scipy.io.wavfile.write`, `audio_dir`) — that is
+the origin of the `.wav` files in this repo.
+
+**Bad windows have two tools at different pipeline positions.** They are
+complementary, not alternatives:
+
+| | `find_artifactual_windows.py` | `label_bad_windows_continous.py` |
+|---|---|---|
+| reads | CSV of extracted LFP | continuous `.fif` |
+| method | automated (`median_abs_deviation`) | manual marking |
+| writes | `mask`, `mask_padded`, `bad_overlap_sec` | `bad_channels` txt + QC CSV |
+| position | after extraction | **before** extraction |
+
+Marking before the wavelet transform is the more defensible default here:
+Morlet convolution smears a transient across roughly +/- n_cycles/f seconds, so
+masking windows post hoc hides the window the artifact sat in without removing
+the contamination that leaked into its neighbours. Cost: manual marking does not
+scale, and excised segments create discontinuities the transform can ring on.
+
+Recommended: manual continuous marking as the real cleaning step, automated MAD
+detection retained downstream as a QC cross-check.
 
 ## Conventions
 
@@ -163,6 +197,8 @@ canonical is an open scientific question. <!-- VERIFY -->
 - **39 of 55 scripts hardcode absolute paths**, split across two machines
   (`/Users/christinechesebrough/...` Mac, `/media/christine/Samsung/...` Linux,
   plus a stale `/Volumes/Samsung`). Only urgent if running off this laptop.
+- `label_bad_windows_continous.py` is misspelled (missing `u` in
+  "continuous"). Worth renaming before it gets imported or referenced widely.
 - `review_power` has **no file extension** and no `.py` twin — it is the only
   copy of that script (1134 lines).
 - Signatures of `plot_power_spectra` and `plot_psd_batched` in
