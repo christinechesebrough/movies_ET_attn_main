@@ -35,18 +35,21 @@ These change what goes into Stage 1. Getting them wrong means re-extracting.
 
 Strictly ordered; each blocks the next.
 
-- [?] **B1. Resolve the CSV schema.** Which tool actually supplies
-  `Is_Bad_Window` to Stage 4 — the MAD masks (`mask`, `mask_padded`) or the
-  manual QC CSV? The column list in CLAUDE.md was reconstructed from *usage*,
-  not from a real file.
-  **Fastest resolution: open one CSV the old pipeline actually produced and
-  read its header.** Everything in B depends on this being right.
+- [x] **B1. Resolve the CSV schema.** DONE 2026-09-09, verified against real
+  files. Result: **four tiers**, not one — see CLAUDE.md. The previously
+  documented long format with `Is_Bad_Window` / `Window_Start_Sec` columns was
+  inferred and wrong; no such columns exist.
 
 - [ ] **B2. Write the Stage 3 bridge** (`wavelet_windows_to_csv.py`).
-  Reads `wavelet_extract_windows.py` HDF5 → emits the long-format CSV Stage 4
-  expects, joining bad-window labels. Template: the `to_csv` block in
-  `extract_power_fc.py` ~lines 880–925.
-  *Blocked by B1.*
+  Reads `wavelet_extract_windows.py` HDF5 → emits **Tier 2**: wide CSV, one
+  file per band, electrodes as columns, five atlas metadata rows prepended
+  (`DK_Atlas_Region`, `Y7_Atlas_Region`, `Y17_Atlas_Region`,
+  `AparcAseg_Atlas_Region`, `network`).
+  Template: `lowpass_power_to_windows.py` (~lines 290–335) — it already writes
+  exactly this format and uses the same 10 s / 7.5 s / 2.5 s window grid the
+  wavelet scripts use.
+  Open question: where do the atlas/network row labels come from when the
+  source is HDF5 rather than a Tier 1 CSV that already carried them?
 
 - [ ] **B3. Validate new bands against old bandpass power.**
   Run B2 on one patient/movie previously analysed with `extract_power_*`, and
@@ -58,8 +61,18 @@ Strictly ordered; each blocks the next.
   a bug, and needs interpreting rather than "fixing".
   *Blocked by B2.*
 
-- [ ] **B4. Run Stage 4 unchanged** on the new data.
-  *Blocked by B3.*
+- [ ] **B4. Recover the two MISSING producers.** Nothing in this repo writes
+  `all_power_wide.csv` (Tier 2 -> 3 aggregation) or `*_power_eye_merged.csv`
+  (Tier 3 -> 4 merge, which creates every attention label and the Mahalanobis
+  group-deviation measures). Nine Stage 4 scripts read those columns; none
+  create them. They were run interactively or live outside this repo.
+  **This is a reproducibility hole, not just a convenience gap** — the paper's
+  dependent measures are produced by code that is not version controlled.
+  Note `0.6` is hard-coded into the label column names.
+  *Blocks B5. Independent of B2/B3 — can start now.*
+
+- [ ] **B5. Run Stage 4 unchanged** on the new data.
+  *Blocked by B3 and B4.*
 
 ## C. Correctness fixes — small, do when convenient
 
@@ -76,14 +89,14 @@ Strictly ordered; each blocks the next.
 
 ## D. Unmapped territory
 
-- [ ] **D1. Map the eye-tracking branch.** `eyetracking_process_scripts/` (8
-  scripts) is active but its connection to the iEEG pipeline is undocumented.
-  Where do gaze features join the attention-state analysis? Note
-  `compute_eye_measures.py` also exists in `analysis_scripts/` at a different
-  length — two diverged copies.
-- [ ] **D2. Where do attention-state labels come from?**
-  `Attention_Label_Individual`, `Attention_Window_Index`, `mean_int`/`mean_ext`
-  appear in Stage 4 but no producing script has been identified.
+- [x] **D1. Map the eye-tracking branch.** DONE — joins at **Tier 4**
+  (`*_power_eye_merged.csv`), where eye features, PC1–PC4 and Mahalanobis group
+  deviation merge onto long windowed power. Producers present in repo:
+  `prePCA_agg_norm.py` (aggregate/normalize), `robust_pca_gaze_features.py` (PCs).
+  Still open: `compute_eye_measures.py` exists in **both** script directories at
+  different lengths (516 vs 618 lines) — two diverged copies, unclear which is current.
+- [x] **D2. Attention-label provenance.** DONE — labels are created in the
+  Tier 3 -> 4 merge, which is missing from the repo. Promoted to **B4**.
 
 ## E. Development velocity — pays back over weeks
 
@@ -115,9 +128,12 @@ Listed so they stop being re-proposed:
 
 ## Suggested order
 
-1. **B1** — read one real CSV header. Minutes, and unblocks the whole critical path.
-2. **A1, A2, A3** — settle upstream decisions while B1's answer is being acted on.
-3. **B2 → B3** — bridge, then validate. B3 is the moment the old scripts are
+1. ~~**B1**~~ — done. Schema verified against real files.
+2. **B4** — recover the missing Tier 2->3 and Tier 3->4 producers. Now the
+   biggest risk in the project: the paper's dependent measures come from code
+   that is not in version control. Independent of B2/B3, so it can start now.
+3. **A1, A2, A3** — settle upstream decisions before the final extraction run.
+4. **B2 → B3** — bridge, then validate. B3 is the moment the old scripts are
    proven reusable against new data.
 4. **C1–C4** — cheap, do between longer tasks.
 5. **E1** — as each script is touched for another reason, add its header.

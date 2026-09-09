@@ -66,27 +66,91 @@ STAGE 4  analyses (all read CSV via pd.read_csv)
 
 ### The CSV boundary — most important fact in this repo
 
-**Every Stage 4 script reads CSV.** None of them touch `.npz` or HDF5. They are
-completely indifferent to the npz -> HDF5 migration.
+**Every Stage 4 script reads CSV.** None touch `.npz` or HDF5. They are
+indifferent to the npz -> HDF5 migration. The migration did not break Stage 4;
+it broke the chain that produced the CSVs.
 
-This means the old analysis scripts are still usable with new data, provided
-Stage 3 emits the same CSV schema. The migration did not break Stage 4; it
-broke the script that used to produce the CSV.
+Verified against real files on 2026-09-09 under
+`/media/christine/Samsung/Movie_data/`. **Four tiers, not one:**
 
-Expected CSV columns (recovered from Stage 4 usage; <!-- VERIFY -->):
-
+**Tier 1 — full-resolution power, WIDE** (~1 GB per file)
+`full_raw_log_power_1Apr26/power_log_{band}_{vid}_{date}/{pat}/`
+`{pat}_{vid}_{run}_{band}_{ref}_power_log.csv`
 ```
-Patient · Movie/Video · Session · Run · Entry_ID · Channel · Atlas ·
-Y17_Atlas_Region · Window_Start_Sec · Attention_Window_Index ·
-Attention_Time_Index · Is_Bad_Window · Is_Good_Window ·
-band columns: delta, alpha, beta, gamma, all_gamma, ...
+cols: SubID, Atlas, <one column per electrode: RDa3, RDa4, ...>   (149 cols)
+rows 1-4 : atlas metadata, keyed by the `Atlas` column —
+           DK_Atlas_Region, Y7_Atlas_Region, Y17_Atlas_Region, AparcAseg_Atlas_Region
+rows 5+  : timepoints @ 600 Hz, `Atlas` blank   (359,428 rows ~= 10 min)
 ```
+One file **per band** — bands are separate directory trees, NOT columns.
+Bands: delta, theta, alpha, beta, gamma, HFA. `ref` = `cortical`.
 
-`Is_Bad_Window` comes from `label_bad_windows_continous.py` and must be joined
-in **at Stage 3**, not later.
+**Tier 2 — windowed, WIDE** (~676 KB; produced by `lowpass_power_to_windows.py`)
+`windowed_power_10s/windowed_{normed|unnormed}_power_log_{vid}_{band}_1Apr26/{pat}/`
+`{pat}_{run}_{vid}_{band}_power_log_{z}_rolling_avg.csv`
+```
+same wide shape, plus an `Unnamed: 0` index column       (150 cols, ~242 rows)
+rows 1-5 : atlas metadata — the four above PLUS a `network` row (custom network)
+rows 6+  : windows (10 s window, 7.5 s overlap, 2.5 s step @ 600 Hz)
+```
+Note the extra `network` metadata row that Tier 1 lacks.
 
-Template for writing this CSV: the `to_csv` block in `extract_power_fc.py`
-around lines 880–925 already produces the canonical column set.
+**Tier 3 — aggregated, LONG** (`windowed_power_10s/all_power_wide.csv`, 333 MB)
+```
+pat_base, run, movie, timepoint, electrode, elec_id,
+dk_region, y7_network, y17_network, aparc_aseg_region, custom_network,
+alpha_power_log, beta_power_log, gamma_power_log, HFA_power_log,
+theta_power_log, delta_power_log                          (18 cols)
+```
+Bands become **columns** here; atlas metadata rows become **columns**.
+One row per (patient, run, movie, timepoint, electrode).
+
+**Tier 4 — power + eye merged** (`dme_power_eye_merged.csv`,
+`ins_power_eye_merged.csv`; 618 MB; identical columns)
+```
+Tier 3 columns, plus:
+  patient_run
+  eye features : Saccade_Rate, Vergence, Vergence_Std, Abs_Vergence,
+                 Saccade_Dispersion, Saccade_Dispersion_Std, Blink_Rate,
+                 Blink_Duration, Pupil_Avg, Pupil_Std, ISC
+  PCs          : PC1..PC4, PC1_z
+  group refs   : *_groupmean for each eye feature
+  deviation    : group_deviation_mahal, group_dev_mahal_z, mahal_time_z,
+                 group_dev_z, group_dev_time_z
+  labels       : Attention_Label_within_subject_dev_[0.6 0.6]
+                 Internal_HighConf_within_subject_dev_0.6
+                 External_HighConf_within_subject_dev_0.6
+                 Attention_Label_within_timepoint_dev_[0.6 0.6]
+                 Internal_HighConf_within_timepoint_dev_0.6
+                 External_HighConf_within_timepoint_dev_0.6   (55 cols)
+```
+This is what Stage 4 actually consumes. **`0.6` is a hard-coded threshold
+baked into the column names** — changing it renames columns downstream.
+
+#### Two producers are MISSING from this repo
+
+Nothing in the repo writes `all_power_wide.csv` (Tier 2 -> 3) or
+`*_power_eye_merged.csv` (Tier 3 -> 4, including all attention labels and the
+Mahalanobis group-deviation measures). Nine Stage 4 scripts *read* these
+columns; none *create* them. Those steps were likely run interactively or live
+outside this repo. **Recovering or rewriting them is required for
+reproducibility** — see TODO D2.
+
+Related eye-side producers that ARE present:
+`eyetracking_process_scripts/prePCA_agg_norm.py` (aggregate+normalize eye
+features) and `analysis_scripts/robust_pca_gaze_features.py` (PCs).
+
+#### Bridge target for the new wavelet pipeline
+
+`wavelet_extract_windows.py` already uses the **same window grid** as
+`lowpass_power_to_windows.py` (10 s / 7.5 s / 2.5 s), so the new Stage 3 should
+emit **Tier 2**: wide, one file per band, with the five atlas metadata rows
+prepended. Tiers 3 and 4 then proceed unchanged — once their missing producers
+are recovered.
+
+Earlier drafts of this file claimed a single long CSV with `Is_Bad_Window` /
+`Window_Start_Sec` / `Attention_Window_Index` columns. **That was inferred and
+is wrong** — no such columns exist in the real files.
 
 ### Vocabulary drift — three names for the same things
 
@@ -177,8 +241,9 @@ src/                       reusable helpers (eeg_preproc_helpers, eye_helpers)
 docs/                      Sphinx docs (docs/_build/ is gitignored)
 ```
 
-Both script directories are active. <!-- VERIFY: how the eye-tracking branch
-connects to the iEEG pipeline is not yet mapped. -->
+Both script directories are active. The eye-tracking branch joins the iEEG
+pipeline at **Tier 4** (`*_power_eye_merged.csv`), where eye features, PCs and
+Mahalanobis group deviation are merged onto long-format windowed power.
 
 ## Git setup
 
