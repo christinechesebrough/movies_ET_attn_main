@@ -156,6 +156,25 @@ analysis_scripts/
 This branch **needs cleanup** (Christine, 2026-09-09) — treat its current
 ordering as provisional.
 
+#### Data staleness: hungarian is missing from Tiers 3 and 4
+
+Verified 2026-09-09 on disk:
+
+```
+all_power_wide.csv         2026-05-17 16:47   movies: despicable_me_english, inscapes
+dme_power_eye_merged.csv   2026-05-17 17:40
+ins_power_eye_merged.csv   2026-05-17 17:40
+windowed_..._hungarian_*   2026-06-26 10:51   <- 40 days AFTER the aggregation
+```
+
+Tier 2 windowed data exists for all three videos (english 17 patients,
+hungarian 13, inscapes 15), but **the Tier 3 aggregate contains only
+despicable_me_english and inscapes**, and there is no `dmh_power_eye_merged.csv`.
+
+The hungarian condition is therefore absent from everything Stage 4 reads.
+Re-running the Tier 2 -> 3 -> 4 chain is required to include it — which is
+blocked on those steps not being in the repo (below).
+
 #### What is genuinely missing from the repo
 
 Two joins are unaccounted for:

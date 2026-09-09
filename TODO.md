@@ -79,6 +79,11 @@ Strictly ordered; each blocks the next.
      power to produce `*_power_eye_merged.csv`.
   Both were likely done interactively. Smaller than first assessed, but still
   the undocumented seam between the power and eye branches.
+  **Also required to fix a live data gap:** `all_power_wide.csv` (2026-05-17)
+  predates the hungarian windowed data (2026-06-26) and contains only
+  despicable_me_english + inscapes. There is no `dmh_power_eye_merged.csv`.
+  13 patients of hungarian data are windowed but absent from every Tier 3/4
+  file, so the condition is invisible to all of Stage 4.
   *Blocks B5. Independent of B2/B3.*
 
 - [ ] **B5. Run Stage 4 unchanged** on the new data.
