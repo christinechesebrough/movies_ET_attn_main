@@ -473,30 +473,20 @@ know where anything lives. What is worth doing, cheapest first:
     - parameters that identify a *variant* belong in the name; parameters that
       identify a *run* belong in a sidecar metadata file
 
-- [~] **G5. Finish moving `rawdata_for_conversion` to the Data drive (339 GB).**
-  PAUSED 2026-09-09 at 54% — 183 GB / 1241 of 2938 files copied. Not a priority;
-  resume when convenient. The Samsung source is untouched and authoritative.
-  The partial destination carries `INCOMPLETE_COPY_DO_NOT_USE.txt`.
+- [x] **G5. `rawdata_for_conversion` moved to the Data drive.** DONE 2026-09-09.
+  339 GB / 3038 files. Verified before deleting the source: full filename+size
+  comparison identical, 6 random content checksums matched (incl. a 766 MB
+  .tev), rsync exit 0. Samsung source then deleted.
+  **Samsung: 107 GB free -> 446 GB free (95% -> 77% used).**
+  Now at `/media/christine/Data/Movie_data/rawdata_for_conversion`.
 
-  Resume (rsync skips what already transferred, so only ~156 GB remains):
-  ```
-  rsync -a --info=stats2 \
-    /media/christine/Samsung/Movie_data/rawdata_for_conversion/ \
-    /media/christine/Data/Movie_data/rawdata_for_conversion/
-  ```
-  Then verify counts/sizes, delete the marker file, and only then remove the
-  Samsung source.
-
-  **Frees ~339 GB on Samsung**, taking it from 107 GB free to ~446 GB. That
-  matters because preprocessing output (`movies_prep_standard`, 275 GB) still
-  writes to Samsung, and a disk-full failure mid-batch is the realistic risk.
-
-  Breaks one reference when the source is deleted:
-  `analysis_scripts/plot_elec_anatomy_attn_effects.py:463` hardcodes
-  `{machine_path}/Samsung/Movie_data/rawdata_for_conversion`. Switch it to
-  `paths.find('rawdata_for_conversion')` rather than leaving a symlink.
-  (`find_ekgs.py:16` also matches the name but points at `AV40_data/` — a
-  different tree, unaffected.)
+- [ ] **G6. `plot_elec_anatomy_attn_effects.py:463` is now BROKEN.**
+  It hardcodes `f'/{machine_path}/Samsung/Movie_data/rawdata_for_conversion'`,
+  which no longer exists — the data is on the Data drive. Deliberately deferred
+  (not a priority 2026-09-09), so this is a known breakage, not a surprise.
+  Fix: `raw_dir = paths.find('rawdata_for_conversion')`.
+  (`find_ekgs.py:16` matches the same name but points at `AV40_data/`, a
+  different tree — unaffected.)
 
 - [ ] **G4. Settle which drive owns what, then record it in `paths.py`.**
   Current de facto split, which is defensible on size grounds:
