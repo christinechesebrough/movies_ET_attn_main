@@ -535,6 +535,36 @@ Strictly ordered; each blocks the next.
   `movie_subs_table.xlsx` (6328 rows, older concatenation),
   and the wavelet-side `*_channel_metadata.csv` (which has the AparcAseg bug).
 
+- [?] **A10. BUG — `wavelet_extract_windows.py` never applies its windows.**
+  Confirmed by Christine 2026-09-09: windowing was intended; the step is missing.
+
+  `get_rolling_window_indices()` computes 236 window boundaries (line 303) and
+  they are written to the output (lines 378-382), but **no averaging is ever
+  performed**. There is no `mean` anywhere in the file. `pow_tf_log_z` is
+  allocated at `(n_channels, n_freqs, n_times)` and the continuous `tf_z` is
+  written straight to it.
+
+  Consequences:
+  - 53 files / 621 GB hold continuous data where ~408 MB of windowed data was
+    intended — **1523x the storage** (15.8 GB vs 10.4 MB per recording).
+  - The filename `*_log_robust_z_wavelets_10s_windows.h5` is actively
+    misleading.
+  - Nothing downstream has consumed these yet, and a consumer expecting 236
+    windows would hit a 359428-length axis — a shape error, so it would fail
+    loudly rather than silently produce wrong numbers.
+
+  The log10 and per-(channel,frequency) robust z ARE correct and verified
+  (B3b), so the existing data is sound, just unreduced.
+
+  **Two fixes, not exclusive:**
+  1. *Window the existing files* (cheap). The continuous z-scored data is
+     verified; averaging within the window boundaries already stored in each
+     file is a pure reduction. No need to re-read the 750 GB of Stage 1 raw TF
+     or recompute log/z.
+  2. *Fix the script* so future runs are correct: allocate `pow_tf_log_z` at
+     `(n_channels, n_freqs, n_windows)` and average `tf_z` within
+     `window_starts`/`window_ends` before writing.
+
 ## C. Correctness fixes — small, do when convenient
 
 - [ ] **C1. `plot_power_spectra` / `plot_psd_batched` signature change.**
