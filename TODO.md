@@ -73,9 +73,22 @@ Strictly ordered; each blocks the next.
   Does NOT establish: correctness of the method choices (see B3), or that this
   holds beyond one recording/band.
 
-- [ ] **B3b. `wavelet_extract_windows.py` (`wavelet_continuous_z`) NOT yet
-  verified.** The other Stage 2 branch — full frequency resolution, 621 GB,
-  42 files. Same treatment as B3a would be worthwhile before it feeds anything.
+- [x] **B3b. `wavelet_extract_windows.py` (`wavelet_continuous_z`) VERIFIED**
+  2026-09-09 (NS127_02, english). Recomputed log10 + per-(channel,frequency)
+  robust z from the source `pow_tf_dat` for 3 channels x 76 freqs x 359428
+  samples (82 million values) and matched the stored output to float32
+  precision: `pow_tf_log_z` max abs diff 4.8e-07, `robust_median` 4.7e-07,
+  `robust_sd` 3.0e-08. Frequency axis (76 bins, 1-151 Hz) and channel labels
+  identical between source and derived.
+
+  **Note — the filename is misleading.** `*_log_robust_z_wavelets_10s_windows.h5`
+  contains `pow_tf_log_z` at shape (145, 76, 359428): **continuous, full time
+  resolution, NOT windowed.** The 236 window boundaries are stored alongside as
+  metadata (`window_start_samples`, `window_end_samples`, `window_*_sec`,
+  `window_centers_sec`) but are not applied to the data. Anything consuming
+  these files must apply the windowing itself. Same misleading-name pattern as
+  `lowpass_power_to_windows.py`, which does no lowpass filtering.
+  (See TODO G3: no misleading names in new outputs.)
 
 - [~] **B3. Validation — FIRST RESULT (NS127_02, english, gamma).**
   Wavelet-derived vs Hilbert/bandpass band power, same recording, same windows:
@@ -293,9 +306,22 @@ Strictly ordered; each blocks the next.
   Does NOT establish: correctness of the method choices (see B3), or that this
   holds beyond one recording/band.
 
-- [ ] **B3b. `wavelet_extract_windows.py` (`wavelet_continuous_z`) NOT yet
-  verified.** The other Stage 2 branch — full frequency resolution, 621 GB,
-  42 files. Same treatment as B3a would be worthwhile before it feeds anything.
+- [x] **B3b. `wavelet_extract_windows.py` (`wavelet_continuous_z`) VERIFIED**
+  2026-09-09 (NS127_02, english). Recomputed log10 + per-(channel,frequency)
+  robust z from the source `pow_tf_dat` for 3 channels x 76 freqs x 359428
+  samples (82 million values) and matched the stored output to float32
+  precision: `pow_tf_log_z` max abs diff 4.8e-07, `robust_median` 4.7e-07,
+  `robust_sd` 3.0e-08. Frequency axis (76 bins, 1-151 Hz) and channel labels
+  identical between source and derived.
+
+  **Note — the filename is misleading.** `*_log_robust_z_wavelets_10s_windows.h5`
+  contains `pow_tf_log_z` at shape (145, 76, 359428): **continuous, full time
+  resolution, NOT windowed.** The 236 window boundaries are stored alongside as
+  metadata (`window_start_samples`, `window_end_samples`, `window_*_sec`,
+  `window_centers_sec`) but are not applied to the data. Anything consuming
+  these files must apply the windowing itself. Same misleading-name pattern as
+  `lowpass_power_to_windows.py`, which does no lowpass filtering.
+  (See TODO G3: no misleading names in new outputs.)
 
 - [~] **B3. Validation — FIRST RESULT (NS127_02, english, gamma).**
   Wavelet-derived vs Hilbert/bandpass band power, same recording, same windows:
