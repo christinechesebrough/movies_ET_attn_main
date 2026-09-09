@@ -79,12 +79,15 @@ Strictly ordered; each blocks the next.
      power to produce `*_power_eye_merged.csv`.
   Both were likely done interactively. Smaller than first assessed, but still
   the undocumented seam between the power and eye branches.
-  **Also required to fix a live data gap:** `all_power_wide.csv` (2026-05-17)
-  predates the hungarian windowed data (2026-06-26) and contains only
-  despicable_me_english + inscapes. There is no `dmh_power_eye_merged.csv`.
-  13 patients of hungarian data are windowed but absent from every Tier 3/4
-  file, so the condition is invisible to all of Stage 4.
-  *Blocks B5. Independent of B2/B3.*
+  **Purpose is to re-derive, not to backfill.** `all_power_wide.csv`
+  (2026-05-17) predates the hungarian windowed data (2026-06-26) and holds only
+  despicable_me_english + inscapes. Do NOT fix this by pushing hungarian through
+  the old chain: hungarian is the bridge condition between english and inscapes,
+  so all three must be derived identically or the comparison is confounded by
+  method. What B4 needs is the reshape/merge *logic*, reimplemented to run on
+  wavelet-derived Tier 2 output for all three videos.
+  The existing Tier 3/4 files become validation references for B3.
+  *Blocks B5. Now depends on B2.*
 
 - [ ] **B5. Run Stage 4 unchanged** on the new data.
   *Blocked by B3 and B4.*
@@ -147,8 +150,8 @@ Listed so they stop being re-proposed:
 2. **A4** — clean up the eye-tracking pipeline and settle which
    `compute_eye_measures.py` is canonical. It gates every attention label.
 3. **A1, A2, A3** — settle upstream decisions before the final extraction run.
-4. **B4** — reconstruct the two reshape/merge steps between the power and eye
-   branches. Independent of B2/B3, so it can run in parallel.
+4. **B2 -> B4** — bridge to Tier 2, then reimplement the Tier 2->3->4
+   reshape/merge on wavelet-derived data for all three videos.
 4. **B2 → B3** — bridge, then validate. B3 is the moment the old scripts are
    proven reusable against new data.
 4. **C1–C4** — cheap, do between longer tasks.

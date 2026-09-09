@@ -27,6 +27,31 @@ once, then derive every other needed representation from them.
 
 Active workstream: the wavelet chain (Stages 1–3 below).
 
+### Design: three conditions, hungarian is the bridge
+
+```
+inscapes                 abstract, non-narrative
+despicable_me_hungarian  narrative visuals, unintelligible speech   <- BRIDGE
+despicable_me_english    narrative visuals, intelligible speech
+```
+
+`despicable_me_hungarian` was added to bridge the previously analysed
+`inscapes` and `despicable_me_english` data.
+
+**Consequence — this drives the whole refactor:** a bridge condition only works
+if all three are processed *identically*. English and inscapes were originally
+derived through the old Hilbert/bandpass chain; deriving hungarian through the
+new wavelet chain would make any three-condition gradient partly an artifact of
+method rather than of stimulus.
+
+This is why the pipeline is being rebuilt from the top for all three videos
+rather than hungarian simply being backfilled. **Do not propose backfilling
+hungarian through the old pipeline** — uniform derivation is the point.
+
+It also means the existing Tier 3/4 files (english + inscapes, 2026-05-17) are
+**reference and validation artifacts, not the target**. They are what the new
+outputs get checked against, not what gets extended.
+
 ---
 
 ## Pipeline
@@ -172,8 +197,11 @@ hungarian 13, inscapes 15), but **the Tier 3 aggregate contains only
 despicable_me_english and inscapes**, and there is no `dmh_power_eye_merged.csv`.
 
 The hungarian condition is therefore absent from everything Stage 4 reads.
-Re-running the Tier 2 -> 3 -> 4 chain is required to include it — which is
-blocked on those steps not being in the repo (below).
+
+This is a **consequence of the deliberate restart, not an oversight** — see
+"Design: three conditions" above. The fix is not to re-run the old chain on
+hungarian; it is to rebuild all three conditions uniformly through the wavelet
+pipeline. These files remain useful as validation references for B3.
 
 #### What is genuinely missing from the repo
 
