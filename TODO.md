@@ -149,6 +149,142 @@ Strictly ordered; each blocks the next.
   Remaining: settle the pre/post question, resolve NS190, fill `include` by
   hand, then make the pipeline scripts read this table.
 
+- [ ] **A7. Anatomy paths point at a different drive.** CORRECTED 2026-09-09:
+  `movie_subs_master_updated.csv` is NOT missing and is NOT an inclusion
+  mechanism. It is a concatenated table of the electrode correspondence sheets
+  (11313 rows x 56 cols, 44 subjects, 2004 contacts) - an older way of pulling
+  data out of those sheets. It lives at
+  `/media/christine/Data/anatomy/shared_correspondence/movie_subs_master_updated.csv`.
+
+  `anatomy/` is the FreeSurfer directory tree and lives on the **Data** drive,
+  not the Samsung drive. Seven scripts still reference the Mac path
+  `/Volumes/Samsung/anatomy/...`.
+
+  **Consequence for E2:** the Mac->Linux path map is NOT a single prefix swap.
+  On the Mac both `anatomy` and `Movie_data` sat under `/Volumes/Samsung`; on
+  Linux they are on different physical drives:
+  ```
+  /Volumes/Samsung/anatomy/...     -> /media/christine/Data/anatomy/...
+  /Volumes/Samsung/Movie_data/...  -> /media/christine/Samsung/Movie_data/...
+  ```
+  A naive `/Volumes/Samsung` -> `/media/christine/Samsung` substitution silently
+  breaks every anatomy path. The path config must map per resource.
+
+- [ ] **A8. Disk space before the full wavelet extraction.**
+  `/media/christine/Samsung` (holds `Movie_data`) is **95% full, 107 GB free**.
+  `/media/christine/Data` has 6.6 TB free. Saving full continuous wavelets is
+  the whole point of the refactor and is far larger than the old windowed
+  outputs - check the projected size against 107 GB before running, and
+  consider targeting the Data drive.
+
+## B. Critical path — completing the pipeline
+
+Strictly ordered; each blocks the next.
+
+- [x] **B1. Resolve the CSV schema.** DONE 2026-09-09, verified against real
+  files. Result: **four tiers**, not one — see CLAUDE.md. The previously
+  documented long format with `Is_Bad_Window` / `Window_Start_Sec` columns was
+  inferred and wrong; no such columns exist.
+
+- [ ] **B2. Write the Stage 3 bridge** (`wavelet_windows_to_csv.py`).
+  Reads `wavelet_extract_windows.py` HDF5 → emits **Tier 2**: wide CSV, one
+  file per band, electrodes as columns, five atlas metadata rows prepended
+  (`DK_Atlas_Region`, `Y7_Atlas_Region`, `Y17_Atlas_Region`,
+  `AparcAseg_Atlas_Region`, `network`).
+  Template: `lowpass_power_to_windows.py` (~lines 290–335) — it already writes
+  exactly this format and uses the same 10 s / 7.5 s / 2.5 s window grid the
+  wavelet scripts use.
+  RESOLVED 2026-09-09: atlas rows come from the sibling
+  `{pat}_{ses}_{run}_{vid}_channel_metadata.csv` in each wavelet patient dir
+  (columns: label, DK_Atlas, Y7_Atlas, Y17_Atlas, AparcAseg_Atlas; one row per
+  channel). Join on `label`. The fifth `network` row comes from
+  `define_custom_network_atlas.py`, which in the old chain rewrote the Tier 1
+  CSV in place — that logic needs applying to channel_metadata.csv instead.
+
+- [ ] **B3. Validate new bands against old bandpass power.**
+  Run B2 on one patient/movie previously analysed with `extract_power_*`, and
+  diff the CSVs. If band power agrees within tolerance, all of Stage 4 is
+  certified against new data for free.
+  **Highest-value single step in this list.** It is also a real scientific
+  check: wavelet-derived bands and Hilbert/bandpass power can differ
+  legitimately because the filters differ — a mismatch is not automatically
+  a bug, and needs interpreting rather than "fixing".
+  *Blocked by B2.*
+
+- [ ] **B4. Recover the two missing reshape/merge steps.**
+  Corrected 2026-09-09: attention labels ARE version controlled — they come from
+  `examine_separate_PCs_together.py` (Mahalanobis deviation + `z_thresh`), which
+  sits downstream of the eye-tracking pipeline. What is *not* in the repo:
+  1. **Tier 2 -> 3**: whatever builds `all_power_wide.csv` (per-band wide
+     windowed CSVs -> one long table, bands as columns, atlas rows -> columns).
+  2. **Tier 3 -> 4**: the join merging the labeled eye-feature frame onto long
+     power to produce `*_power_eye_merged.csv`.
+  Both were likely done interactively. Smaller than first assessed, but still
+  the undocumented seam between the power and eye branches.
+  **Purpose is to re-derive, not to backfill.** Hungarian IS complete in the
+  old pipeline's rolling-FOOOF branch (16 patients, Jun-Jul 2026); it is absent
+  only from Branch A's May 17 power+eye aggregates. Do not push hungarian
+  through the old Branch A chain to patch that — as the bridge condition it must
+  be derived identically to english and inscapes, which means all three go
+  through the wavelet pipeline. B4 needs the reshape/merge *logic*,
+  reimplemented on wavelet-derived Tier 2 for all three videos.
+  Old outputs are preserved as validation references for B3.
+  *Blocks B5. Depends on B2.*
+
+- [ ] **B5. Run Stage 4 unchanged** on the new data.
+  *Blocked by B3 and B4.*
+
+- [~] **A5. Inclusion/exclusion logging.** SCAFFOLD DONE.
+  `analysis_scripts/scan_recording_coverage.py` walks the data tree and writes
+  `Movie_data/recording_coverage.csv`: one row per (patient, session, video,
+  run) with has_preprocessed / bad_channels / bad_windows / wavelet /
+  power_tier1 / power_tier2 / fooof, plus eye-quality metrics joined from the
+  existing `missing_data_{video}.csv` tables.
+  First run: **87 recordings, 39 patients.** Attrition 87 preprocessed -> 54
+  wavelet -> 47 tier2 -> 29 fooof; **33 recordings are preprocessed with no
+  downstream output at all.**
+  The `include` / `exclude_reason` / `exclude_modality` columns are left BLANK
+  by design — file presence records what was processed, never what should be.
+  Gaze heuristic implemented (Christine's rule: exclude if under 70% gaze data
+  present in EACH eye). Emitted as `suggested_include`, advisory only, since she
+  has stated there are exceptions. Per-eye present fractions are reported for
+  both the pre- and post-interp metrics.
+
+  **[?] OPEN DECISION — pre- or post-interp?** The choice moves 9 recordings:
+  pre-interp passes 60 / fails 25; post-interp passes 51 / fails 34. The 9 that
+  flip sit at 0.72-0.80 pre but 0.49-0.68 post (NS151, NS151_02, NS153,
+  NS174_02, NS174_03 english; NS144, NS151 hungarian; NS136, NS151 inscapes).
+  Note post-interp missing is HIGHER than pre in 97.8% of rows, so it is the
+  conservative metric, not a gap-filled one. `suggested_include` currently uses
+  pre-interp.
+
+  **6 recordings fail the 70% rule but were processed downstream anyway** —
+  either the stated exceptions or oversights; worth confirming which:
+  NS155_02 english (0.52/0.53), NS190 english run-2 (0.76/0.54),
+  NS128_02 hungarian (0.67/0.66), NS167 hungarian (0.56/0.68),
+  NS153 inscapes (0.61/0.64), NS210 inscapes (0.77/0.66).
+  NS190 and NS210 fail on ONE eye only — the per-eye rule catches asymmetry
+  that an averaged-across-eyes rule would hide.
+
+  Cross-referenced against what actually reached the PC/attention-label stage
+  (`shared_PC_features_10s_20Apr26/*features_df*[0.6, 0.6]*.csv`), now emitted
+  as `in_pca_stage`. **No script carries a patient list** — inclusion is purely
+  "whichever input files happened to exist."
+
+  Results: 18 english / 12 hungarian / 17 inscapes reached the PC stage.
+  - **4 included despite failing the 70% rule:** NS155_02 english (0.52/0.53),
+    NS190 english run-2 (0.76/0.54), NS153 inscapes (0.61/0.64),
+    NS210 inscapes (0.77/0.66).
+  - **17 pass the rule but never reached the PC stage**, several with excellent
+    gaze: NS201_02 english (0.98/0.93), NS204 english (0.85/0.98),
+    LH010 hungarian (0.93/0.93), NS155/NS155_02 hungarian (0.92/0.93).
+  - **[?] NS190 english: the WORSE run was included.** run-1 (0.887/0.889,
+    passes, has wavelet) is absent; run-2 (0.762/0.538, fails on the left eye)
+    is in. Looks like an error rather than a judgement call — worth checking.
+
+  Remaining: settle the pre/post question, resolve NS190, fill `include` by
+  hand, then make the pipeline scripts read this table.
+
 - [ ] **A7. `movie_subs_master_updated.csv` is MISSING from this drive.**
   Seven scripts load it —
   `robust_pca_gaze_features.py`, `compute_eye_measures.py` (both copies),
@@ -204,6 +340,11 @@ Strictly ordered; each blocks the next.
   canonical per-recording channel table plus a single accessor.
   `*_channel_metadata.csv` beside the wavelet outputs is the obvious candidate.
   *Cross-cutting. Also unblocks B2, which needs these rows.*
+  Note there are FOUR sources of channel metadata in circulation:
+  the correspondence sheets (authoritative, per patient),
+  `movie_subs_master_updated.csv` (11313 rows, concatenation of those sheets),
+  `movie_subs_table.xlsx` (6328 rows, older concatenation),
+  and the wavelet-side `*_channel_metadata.csv` (which has the AparcAseg bug).
 
 ## C. Correctness fixes — small, do when convenient
 
