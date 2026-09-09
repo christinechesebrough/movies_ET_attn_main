@@ -56,8 +56,12 @@ Strictly ordered; each blocks the next.
   Template: `lowpass_power_to_windows.py` (~lines 290–335) — it already writes
   exactly this format and uses the same 10 s / 7.5 s / 2.5 s window grid the
   wavelet scripts use.
-  Open question: where do the atlas/network row labels come from when the
-  source is HDF5 rather than a Tier 1 CSV that already carried them?
+  RESOLVED 2026-09-09: atlas rows come from the sibling
+  `{pat}_{ses}_{run}_{vid}_channel_metadata.csv` in each wavelet patient dir
+  (columns: label, DK_Atlas, Y7_Atlas, Y17_Atlas, AparcAseg_Atlas; one row per
+  channel). Join on `label`. The fifth `network` row comes from
+  `define_custom_network_atlas.py`, which in the old chain rewrote the Tier 1
+  CSV in place — that logic needs applying to channel_metadata.csv instead.
 
 - [ ] **B3. Validate new bands against old bandpass power.**
   Run B2 on one patient/movie previously analysed with `extract_power_*`, and

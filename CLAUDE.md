@@ -232,13 +232,52 @@ Two joins are unaccounted for:
 The label *computation* is version controlled; these two *reshape/merge* steps
 are not. See TODO B4.
 
+#### Channel metadata — where the atlas rows come from
+
+Each wavelet output directory carries a sibling metadata CSV:
+
+```
+wavelet_power_10s/wavelet_{vid}_all_cortContacts_tf/{pat}/
+    {pat}_{ses}_{run}_{vid}_channel_metadata.csv
+    {pat}_{ses}_{run}_{vid}_wavelet_log_tf.npz
+```
+
+`*_channel_metadata.csv` — one row per channel (147 for NS127_02, matching the
+147 electrode columns in Tier 1/2):
+
+| column | -> Tier 2 metadata row |
+|---|---|
+| `label` | the electrode column names |
+| `DK_Atlas` | `DK_Atlas_Region` |
+| `Y7_Atlas` | `Y7_Atlas_Region` |
+| `Y17_Atlas` | `Y17_Atlas_Region` |
+| `AparcAseg_Atlas` | `AparcAseg_Atlas_Region` |
+
+That covers four of the five rows. The fifth, `network`, comes from
+`define_custom_network_atlas.py`, which in the old chain **rewrites the Tier 1
+CSV in place** (line 245) to insert it; `lowpass_power_to_windows.py` then just
+carries all five rows through. Old chain order:
+
+```
+Tier 1 CSV (4 atlas rows)
+   -> define_custom_network_atlas.py   adds 'network' row, rewrites in place
+   -> lowpass_power_to_windows.py      windows; carries 5 rows through
+   -> Tier 2
+```
+
+For the wavelet bridge the network-assignment logic
+(`define_custom_network_atlas.py` ~lines 348-535) needs applying to
+`channel_metadata.csv` instead of to a Tier 1 CSV.
+
 #### Bridge target for the new wavelet pipeline
 
 `wavelet_extract_windows.py` already uses the **same window grid** as
 `lowpass_power_to_windows.py` (10 s / 7.5 s / 2.5 s), so the new Stage 3 should
 emit **Tier 2**: wide, one file per band, with the five atlas metadata rows
-prepended. Tiers 3 and 4 then proceed unchanged — once their missing producers
-are recovered.
+prepended — four joined from `channel_metadata.csv` on `label`, the fifth
+derived via the network logic in `define_custom_network_atlas.py`.
+Tiers 3 and 4 then proceed unchanged — once their missing producers are
+recovered.
 
 Earlier drafts of this file claimed a single long CSV with `Is_Bad_Window` /
 `Window_Start_Sec` / `Attention_Window_Index` columns. **That was inferred and
