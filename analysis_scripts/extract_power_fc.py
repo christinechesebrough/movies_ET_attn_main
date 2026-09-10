@@ -35,7 +35,7 @@ from joblib import Parallel, delayed
 from fooof import FOOOF
 from fooof.plts.spectra import plot_spectrum
 
-machine_path = 'Volumes'#'media/christine'#'Volumes' #'media/christine'
+machine_path = 'media/christine'#'Volumes' #'media/christine'
 
 
 #from antropy import sample_entropy, spectral_entropy, perm_entropy, lziv_complexity
@@ -45,8 +45,8 @@ sys.path.insert(0, f'/{machine_path}/Samsung/EPIPE/Python')
 sys.path.insert(0, f'/{machine_path}/Samsung/iEEG2NWB-main')
 
 #vids = ['inscapes','despicable_me_english']#,'despicable_me_english']
-vids = ['despicable_me_hungarian']#,'inscapes']#,'despicable_me_english']#,'despicable_me_english']
-freq_bands = ['theta','alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
+vids = ['despicable_me_hungarian','inscapes','despicable_me_english']#,'despicable_me_english']
+freq_bands = ['delta']#'theta','alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
 #freq_bands = ['theta_alpha','all_gamma']
 
 ref = 'avg'
@@ -54,9 +54,9 @@ ref = 'avg'
 region = 'all'
 
 
-data_dir = f'/{machine_path}/Samsung/Movie_data/new_dmh_prep_standard'
+data_dir = f'/{machine_path}/Samsung/Movie_data/movies_prep_standard'      #new_dmh_prep_standard'
 isc_dir = f'/{machine_path}/SamsungMovie_data/data/isc'
-mne_data_dir = f'/{machine_path}/Samsung/Movie_data/new_dmh_prep_standard'
+mne_data_dir = f'/{machine_path}/Samsung/Movie_data/movies_prep_standard'   # new_dmh_prep_standard'
 elec_dir = f'/{machine_path}/Samsung/Movie_data/data/electrode_localization'
 fs_dir = f'/{machine_path}/Samsung/anatomy'
 
@@ -70,13 +70,12 @@ visualize_mne_steps = False
 condense_to_isc = False
 rolling_average = False
 lowpass = False
-find_peaks = True
+find_peaks =False
 plot_power = False
 plot_power_subsets = False
 use_interpolation = False
 window_compare = False
-extract_power = False
-
+extract_power =True
 output = 'power'
 pow_type = 'log'
 
@@ -316,7 +315,7 @@ for vid in vids:
     if vid == 'the_present':
         keys = ['present','the_present']
 
-v
+
     
     
     freq_band_count = 0
@@ -359,9 +358,9 @@ v
     
         print(f"Processing data for {vid} in {freq_band} with range: {freq_range} Hz")
         if output == 'entropy':
-            fig_dir = f'/{machine_path}/Samsung/Movie_data/{freq_band}_{region}_{vid}_all_cortContacts_entropy_29Mar25/entropy_extracted'
+            fig_dir = f'/{machine_path}/Samsung/Movie_data/full_raw_log_power/{freq_band}/{freq_band}_{vid}_all_cortContacts_entropy_29Mar25/entropy_extracted'
         else:
-            fig_dir = f'/{machine_path}/Samsung/Movie_data/{output}_{pow_type}_{freq_band}_{vid}_26Mar26'
+           fig_dir = f'/{machine_path}/Samsung/Movie_data/full_raw_log_power_rescale/{freq_band}/{freq_band}_{output}_{pow_type}_{freq_band}_{vid}'
         if not os.path.exists(fig_dir):
             os.makedirs(fig_dir)
             
@@ -814,7 +813,8 @@ v
                             if pow_type == 'raw':
                                 power_for_z = power
                             elif pow_type == 'log':
-                                power_for_z = np.log10(power + 1e-6)
+                               # power_for_z = np.log10(power + 1e-6)
+                                power_for_z = np.log10(np.maximum(power, np.finfo(power.dtype).tiny))
                             else:
                                 raise ValueError(f"Unknown pow_type: {pow_type}")
                         
@@ -846,9 +846,25 @@ v
                         if pow_type == 'raw':
                             pow_dat = pow_dat_raw
                         elif pow_type == 'log':
-                            pow_dat = np.log10(pow_dat_raw + 1e-6)
+                           # pow_dat = np.log10(pow_dat_raw + 1e-6)
+                           pow_dat = np.log10(np.maximum(pow_dat_raw, np.finfo(pow_dat_raw.dtype).tiny))
                         else:
                             raise ValueError(f"Unknown pow_type: {pow_type}")
+
+                        # Decimate 600 -> 300 Hz. The Hilbert envelope of a bandpassed
+                        # signal is bandlimited by the PASSBAND WIDTH, not the carrier
+                        # frequency: 99 Hz for HFA, the widest band. A 150 Hz Nyquist
+                        # therefore has 1.5x margin, and no anti-alias filter is needed
+                        # because nothing exists above the passband width to fold back.
+                        #
+                        # Placed AFTER the pow_type branches so it applies to both 'raw'
+                        # and 'log'. fs_lfp is reassigned so every downstream index that
+                        # derives from it - window_idx(), total_samples, new_window_samples
+                        # - recomputes correctly. fs_lfp is re-read from
+                        # mne_data.info['sfreq'] per recording, so this does not compound.
+                        DECIM_POWER = 2
+                        pow_dat = pow_dat[:, ::DECIM_POWER]
+                        fs_lfp = fs_lfp / DECIM_POWER
                             
                     else:
                         raise ValueError(f"Unknown output: {output}")
@@ -1168,6 +1184,6 @@ v
                     csv_filename = os.path.join(fig_patient_dir, f'{pat}_{vid}_{run_label}_{freq_band}_cortical_{entropy_type}.csv')
                 else:
                     csv_filename = os.path.join(fig_patient_dir, f'{pat}_{vid}_{run_label}_{freq_band}_cortical_{output}_{pow_type}.csv')
-                df_w_atlas.to_csv(csv_filename, header=True, index=False)
-            
+                df_w_atlas.to_csv(csv_filename, header=True, index=False,
+                                                      float_format='%.6g')            
             

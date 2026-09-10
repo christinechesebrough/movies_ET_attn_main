@@ -17,7 +17,10 @@ import pandas as pd
 # PARAMETERS
 # =============================================================================
 
-fs_lfp            = 600          # Hz — samples per second in the power data
+fs_lfp            = 300          # Hz — power CSVs are decimated 600->300 in
+                                 # extract_power_fc.py. WINDOW/STEP_SAMPLES
+                                 # derive from this, and the window COUNT is
+                                 # unchanged (236), so Tier 2/3/4 are unaffected.
 normalize         = False        # z-score each electrode before windowing
 machine_path      = 'media/christine'
 method            = 'power_log'
