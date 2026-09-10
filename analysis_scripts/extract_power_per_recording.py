@@ -29,10 +29,14 @@ What did NOT change:
     600->300 Hz decimation, rounding, atlas rows and the CSV write are byte
     identical to extract_power_fc.py.
 
-VALIDATE BEFORE TRUSTING:
-    Run one recording through both scripts and diff the CSVs. They should be
-    identical. This was a mechanical restructure of a 1200-line script and has
-    only been checked structurally, not numerically.
+VALIDATED 2026-09-09:
+    NS138 / despicable_me_english / delta run through both this script and
+    extract_power_fc.py produced BYTE-IDENTICAL CSVs (234,490,017 bytes, cmp
+    clean). The restructure changes loop order and nothing else.
+
+    Note the validation had to redirect fig_dir: both scripts build the same
+    output path, so running them in sequence would overwrite rather than allow
+    a comparison.
 """
 
 """
@@ -80,8 +84,8 @@ sys.path.insert(0, f'/{machine_path}/Samsung/EPIPE/Python')
 sys.path.insert(0, f'/{machine_path}/Samsung/iEEG2NWB-main')
 
 #vids = ['inscapes','despicable_me_english']#,'despicable_me_english']
-vids = ['despicable_me_hungarian','inscapes','despicable_me_english']#,'despicable_me_english']
-freq_bands = ['theta','alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
+vids = ['despicable_me_hungarian']#,'inscapes','despicable_me_english']#,'despicable_me_english']
+freq_bands = ['theta']#,'alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
 #freq_bands = ['theta_alpha','all_gamma']
 
 ref = 'avg'
