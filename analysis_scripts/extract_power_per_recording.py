@@ -84,8 +84,8 @@ sys.path.insert(0, f'/{machine_path}/Samsung/EPIPE/Python')
 sys.path.insert(0, f'/{machine_path}/Samsung/iEEG2NWB-main')
 
 #vids = ['inscapes','despicable_me_english']#,'despicable_me_english']
-vids = ['despicable_me_hungarian']#,'inscapes','despicable_me_english']#,'despicable_me_english']
-freq_bands = ['theta']#,'alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
+vids = ['despicable_me_hungarian','inscapes','despicable_me_english']#,'despicable_me_english']
+freq_bands = ['theta','alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
 #freq_bands = ['theta_alpha','all_gamma']
 
 ref = 'avg'
@@ -632,7 +632,7 @@ for vid in vids:
                 if output == 'entropy':
                     fig_dir = f'/{machine_path}/Samsung/Movie_data/full_raw_log_power/{freq_band}/{freq_band}_{vid}_all_cortContacts_entropy_29Mar25/entropy_extracted'
                 else:
-                   fig_dir = f'/{machine_path}/Samsung/Movie_data/full_raw_log_power_rescale/{freq_band}/{freq_band}_{output}_{pow_type}_{freq_band}_{vid}'
+                   fig_dir = f'/{machine_path}/Data/Movie_data/full_raw_log_power_rescale/{freq_band}/{freq_band}_{output}_{pow_type}_{freq_band}_{vid}'
                 if not os.path.exists(fig_dir):
                     os.makedirs(fig_dir)
 
@@ -880,7 +880,13 @@ for vid in vids:
 
 
                 elif output == 'power':
-                    raw_power_bins = []
+                    # A15: accumulate a running sum instead of holding every sub-bin.
+                    # HFA has 10 bins; at 512 channels x 359k samples each bin is 1.5 GB,
+                    # so list-then-stack held ~15 GB in a single worker and the OOM killer
+                    # took out the largest recordings under parallel load.
+                    # mean == sum/n, so this is numerically identical.
+                    power_sum = None
+                    n_bins_used = 0
 
                     for f_low, f_high in freq_bins:
                         sos = signal.butter(5, [f_low, f_high], btype='bandpass', fs=fs_lfp, output='sos')
@@ -888,9 +894,12 @@ for vid in vids:
 
                         analytic = signal.hilbert(band_bin, axis=1)
                         power = np.abs(analytic)  # raw envelope
-                        raw_power_bins.append(power)
+                        power_sum = power if power_sum is None else power_sum + power
+                        n_bins_used += 1
+                        del band_bin, analytic, power
 
-                    pow_dat_raw = np.mean(np.stack(raw_power_bins, axis=0), axis=0)  # (n_channels, n_times)
+                    pow_dat_raw = power_sum / n_bins_used  # (n_channels, n_times)
+                    del power_sum
 
                     if pow_type == 'raw':
                         pow_dat = pow_dat_raw
