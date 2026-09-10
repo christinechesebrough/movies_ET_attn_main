@@ -682,6 +682,26 @@ Strictly ordered; each blocks the next.
 
 ## C. Correctness fixes — small, do when convenient
 
+- [ ] **C0b. FOOOF light pipeline — PAUSED 2026-09-10, ready to relaunch.**
+  `analysis_scripts/extract_fooof_light.py` + `launch_fooof_light.sh` are
+  written, smoke-tested (82 fits/sec pinned, ~7 min/recording, 75 recordings,
+  ~35 min across 16 workers). Nothing was written; paused before the first
+  output file.
+  **Do this before relaunching:** rename `{band}_CF` -> `{band}_ArgmaxHz` and
+  add `{band}_CF_if_present` (NaN below PRESENCE_THRESHOLD). In the OLD
+  pipeline `{band}_CF` meant a fitted Gaussian centre and was NaN when absent;
+  here it is a raw argmax that is NEVER NaN, so the same name carries two
+  different meanings across tables — a silent failure if the two are ever
+  joined or compared.
+  Relaunch: `bash analysis_scripts/launch_fooof_light.sh 16`
+
+- [ ] **C0c. Power extraction: 20 files outstanding.** 304 of 324 present in
+  `/media/christine/Data/Movie_data/full_raw_log_power_rescale`. Hungarian and
+  inscapes complete. Missing: NS127_02, NS135, NS136, NS137 (english, run-01)
+  for theta/alpha/beta/gamma/HFA — they have delta only, so the separate delta
+  worker covered them and the band workers never did. No processes running.
+
+
 - [ ] **C0. FOOOF `aperiodic_mode` is misspecified — refit required.**
   Measured 2026-09-10 (`analysis_scripts/compare_fooof_aperiodic_mode.py`,
   10,000 fits): a knee sits inside the 1-57 Hz fit range in **95.1%** of
