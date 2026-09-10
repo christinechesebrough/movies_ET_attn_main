@@ -682,6 +682,21 @@ Strictly ordered; each blocks the next.
 
 ## C. Correctness fixes — small, do when convenient
 
+- [ ] **C0. FOOOF `aperiodic_mode` is misspecified — refit required.**
+  Measured 2026-09-10 (`analysis_scripts/compare_fooof_aperiodic_mode.py`,
+  10,000 fits): a knee sits inside the 1-57 Hz fit range in **95.1%** of
+  windows (median 5.19 Hz), the fixed-mode exponent correlates only **0.46**
+  with the knee-mode exponent, and the bias tracks knee position at
+  **r = -0.833** — a confound in the attention-state contrast, not just an
+  offset. The same misfit suppresses delta and inflates theta/alpha
+  (delta periodic power flips sign, -0.029 -> +0.196).
+  Also `max_n_peaks=12` binds in 30.1% of fits.
+  Blocks any use of `rolling_fooof_*_26Jun26` exponents or low-frequency peaks.
+  Details in CLAUDE.md. Fix: `aperiodic_mode='knee'`, raise `max_n_peaks`,
+  carry `f_knee` through as its own measure, refit.
+  Note LH010's correspondence sheet has no `label` column (KeyError in
+  `channel_metadata.py`) — unrelated, but it silently drops that patient.
+
 - [ ] **C1. `plot_power_spectra` / `plot_psd_batched` signature change.**
   Both gained parameters in `src/eeg_preproc_helpers.py`. Check the ~16 callers
   for positional-argument breakage. Silent wrong-plot risk, not a crash.

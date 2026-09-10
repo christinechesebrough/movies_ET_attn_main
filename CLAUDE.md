@@ -381,6 +381,96 @@ epsilon       worst at HFA/gamma  (59%, 43% of dynamic range lost)
 wavelet grid  worst at delta      (40% band coverage, 1.2 Hz gap)
 ```
 
+## FOOOF aperiodic mode: `fixed` is misspecified (measured 2026-09-10)
+
+`extract_all_fooof.py` fits `aperiodic_mode='fixed'` over 1-57 Hz. Measured on
+10,000 fits (5 recordings, 3 videos, 50 channels x 40 windows each) via
+`analysis_scripts/compare_fooof_aperiodic_mode.py`: **these spectra have a knee
+inside the fit range in 95.1% of windows** (median f_knee 5.19 Hz, IQR
+2.96-9.22). Consistent across recordings (per-recording medians 3.8-6.3 Hz).
+
+Not a filter artifact: the preprocessing high-pass is **0.1 Hz**, and 86.3% of
+knees sit above 2 Hz.
+
+### R-squared does not detect this - do not use it to choose the model
+
+    R^2   fixed 0.9722   knee 0.9742   delta +0.0020
+
+Both models fit well in absolute terms because nearly all spectral variance is
+in the overall slope. The knee is real and consequential but explains almost no
+additional variance. **Model choice here must be made on the knee estimate and
+the residual structure, not on fit quality.**
+
+### The exponent is biased, and the bias is a confound
+
+| | mean | sd | corr with fixed |
+|---|---|---|---|
+| A `fixed` 1-57 (production) | 1.835 | 0.418 | - |
+| B `knee` 1-57 | 2.898 | 1.032 | **0.464** |
+| C `fixed` 3-57 | 2.140 | 0.484 | 0.942 |
+
+`corr(fixed, knee) = 0.46` — only ~21% shared variance. The fixed-mode exponent
+is **not** a monotone proxy for the knee-mode exponent; rankings do not survive.
+
+    corr(log10 f_knee, exponent bias) = -0.833
+
+The bias is almost entirely determined by knee position. Knee frequency is a
+plausible correlate of arousal and of the neural autocorrelation timescale, so
+**if knee position varies with attention state, the fixed-mode exponent shows a
+difference that is really a knee-position difference.** Any exponent contrast
+computed from `rolling_fooof_*_26Jun26` is confounded in this way.
+
+### The misfit suppresses delta and inflates theta/alpha
+
+Mean residual (observed - aperiodic) below 8 Hz is **+0.225 under `fixed`,
+positive in 98.3% of fits** — the straight line runs under the data at the low
+end essentially always. Knee mode halves it (+0.127).
+
+Band-limited periodic power (mean flattened spectrum), fixed -> knee:
+
+| band | fixed | knee | change |
+|---|---|---|---|
+| delta | -0.029 | +0.196 | **+0.225 (sign flip)** |
+| theta | +0.349 | +0.082 | -0.267 |
+| alpha | +0.536 | +0.164 | -0.371 |
+| beta | +0.421 | +0.188 | -0.232 |
+| gamma | +0.061 | +0.113 | +0.052 |
+
+Geometry: a straight line through a curve that flattens below the knee sits
+ABOVE the data at the very bottom and BELOW it in the mid-range. So `fixed`
+**hides delta and manufactures theta/alpha**. Peak counts follow — delta peaks
++73.7% under knee, theta -40.2%, alpha -30.4%.
+
+**This is a large part of why delta peaks looked near-absent** (1.17% of peaks
+below 3.5 Hz in the production data). It was substantially a model artifact.
+
+### `max_n_peaks = 12` binds hard
+
+At current settings **30.1% of `fixed` fits hit the 12-peak cap** (17.2% under
+knee - the knee model needs fewer Gaussians because it is not spending them on
+the aperiodic bend). Two defects compound: the misfit consumes peak budget,
+the cap then discards real peaks.
+
+Note the production files max out at exactly **8** peaks despite
+`max_n_peaks=12` in their filenames, and a current-version refit reaches 12.
+Unresolved - possibly a different `fooof` version in the June run
+(`mne` env has 1.1.0, `mne310` has 1.1.1). <!-- VERIFY -->
+
+### Consequences
+
+- `aperiodic_mode='knee'` for any fit whose range extends below ~10 Hz.
+- Cost: knee-mode exponent is noisier - within-channel sd across windows 0.264
+  vs 0.116 for fixed. Bias that tracks a state-varying parameter is worse than
+  variance, but this cost is real and argues for aggregating across windows.
+- Report **f_knee as its own measure**. It is interpretable (characteristic
+  timescale) and may be the state-sensitive parameter in its own right.
+- Config C (`fixed` 3-57 Hz) is not an acceptable remedy here: it discards
+  delta entirely (18 peaks vs 2,189), and delta is central to the grant aims.
+- Raise `max_n_peaks` until the cap stops binding (<5% of windows).
+- The knee estimate depends on the low end being well sampled. At Welch
+  `n_fft = 2*fs` there are only ~5 bins below 3.5 Hz - reinforcing the case for
+  a separate long-window pass for the low band.
+
 ## Channel metadata: use src/channel_metadata.py
 
 `src/channel_metadata.py` is the canonical accessor (TODO A6). It reads the
