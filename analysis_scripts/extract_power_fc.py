@@ -865,6 +865,16 @@ for vid in vids:
                         DECIM_POWER = 2
                         pow_dat = pow_dat[:, ::DECIM_POWER]
                         fs_lfp = fs_lfp / DECIM_POWER
+
+                        # Round before the DataFrame is built. float_format on
+                        # to_csv does NOT work here: df_w_atlas concatenates the
+                        # string atlas rows with the numeric data, so every
+                        # column becomes dtype=object and pandas falls back to
+                        # str() per value, writing all 17 digits.
+                        # 5 decimals on log10 power (~-4.8) is 6 significant
+                        # figures, far beyond the measurement precision, and
+                        # shortens each value from 19 chars to 8.
+                        pow_dat = np.round(pow_dat, 5)
                             
                     else:
                         raise ValueError(f"Unknown output: {output}")
