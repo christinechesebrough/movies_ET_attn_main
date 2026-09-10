@@ -905,8 +905,11 @@ for vid in vids:
                     # Placed AFTER the pow_type branches so it applies to both 'raw'
                     # and 'log'. fs_lfp is reassigned so every downstream index that
                     # derives from it - window_idx(), total_samples, new_window_samples
-                    # - recomputes correctly. fs_lfp is re-read from
-                    # mne_data.info['sfreq'] per recording, so this does not compound.
+                    # - recomputes correctly. fs_lfp is reset from fs_lfp_raw at the TOP
+                    # of each band iteration, which is what stops this compounding
+                    # across bands (600->300->150->75...). In extract_power_fc.py the
+                    # .fif reloads per band, so the reset happened implicitly; that
+                    # does NOT hold here and the explicit reset is required.
                     DECIM_POWER = 2
                     pow_dat = pow_dat[:, ::DECIM_POWER]
                     fs_lfp = fs_lfp / DECIM_POWER
