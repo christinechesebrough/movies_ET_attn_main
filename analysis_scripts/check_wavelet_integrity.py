@@ -90,6 +90,14 @@ def check(path):
             if not np.all(np.isfinite(d[idx[0], ..., :N_PROBE_SAMPLES])):
                 return 'partial', 'non-finite values in first probed channel'
             return 'ok', f'{d.shape}'
+    except BlockingIOError:
+        # HDF5 holds a write lock: this file is being written RIGHT NOW by an
+        # active extraction. Not corruption - never delete these.
+        return 'locked', 'in use by a running extraction'
+    except OSError as exc:
+        if 'unable to lock' in str(exc).lower():
+            return 'locked', 'in use by a running extraction'
+        return 'unreadable', f'{type(exc).__name__}: {exc}'
     except Exception as exc:
         return 'unreadable', f'{type(exc).__name__}: {exc}'
 
@@ -97,19 +105,28 @@ def check(path):
 def main(delete=False):
     files = find_files()
     print(f'scanning {len(files)} wavelet HDF5 files\n')
-    bad = []
+    bad, locked = [], []
     for p in files:
         status, detail = check(p)
+        if status == 'locked':
+            locked.append(p)
+            continue
         if status != 'ok':
             bad.append((p, status, detail))
             print(f'  {status.upper():10s} {os.path.getsize(p)/1e9:6.2f} GB  '
                   f'{os.path.basename(p)[:56]}')
             print(f'             {detail}')
     print()
+    if locked:
+        print(f'  {len(locked)} file(s) locked by a running extraction - skipped, '
+              f'not evaluated:')
+        for p in locked[:8]:
+            print(f'      {os.path.basename(p)[:60]}')
+        print('  re-run this check once the extraction finishes.\n')
     if not bad:
-        print(f'  all {len(files)} files OK')
+        print(f'  {len(files)-len(locked)} evaluated, all OK')
         return 0
-    print(f'  {len(bad)} of {len(files)} files FAILED')
+    print(f'  {len(bad)} of {len(files)-len(locked)} evaluated files FAILED')
     if delete:
         for p, _, _ in bad:
             os.remove(p)
