@@ -344,6 +344,43 @@ scale, and excised segments create discontinuities the transform can ring on.
 Recommended: manual continuous marking as the real cleaning step, automated MAD
 detection retained downstream as a QC cross-check.
 
+## The `+ 1e-6` epsilon bug (old bandpass pipeline)
+
+`extract_power_*.py` computed `np.log10(pow_dat_raw + 1e-6)`. That additive
+constant is NOT negligible against iEEG amplitudes, and because power follows
+1/f the damage scales with frequency. Measured on NS127_02 english, 6 channels:
+
+| band | true amplitude | 1e-6 / signal | dynamic range lost |
+|---|---|---|---|
+| delta | 1.28e-05 | 0.08 | 9.4% |
+| theta | 6.33e-06 | 0.16 | 14.0% |
+| alpha | 4.99e-06 | 0.20 | 17.2% |
+| beta | 2.92e-06 | 0.34 | 25.6% |
+| gamma | 1.37e-06 | 0.73 | **42.8%** |
+| **HFA** | 6.28e-07 | **1.59** | **59.4%** |
+
+**For HFA the epsilon exceeds the signal itself.** Roughly 60% of HFA's
+dynamic range was destroyed, and 43% of gamma's.
+
+The compression is NONLINEAR - it flattens the low end while barely touching
+the high end - so it is not removable by rescaling and downstream z-scoring
+does not undo it. It is also channel-dependent, hitting low-amplitude
+electrodes hardest, so it distorts spatial patterns as well as effect sizes.
+
+**Any HFA or gamma result from `full_raw_log_power_1Apr26` is attenuated.**
+
+Fixed 2026-09-09 by `np.log10(np.maximum(x, np.finfo(x.dtype).tiny))` - a floor
+rather than an addition, so values above it pass through unchanged. Verified:
+the re-extracted delta matches `log10(10^old - 1e-6)` to 0.003 log units
+(r = 0.99987), confirming the fix changed exactly one thing.
+
+**Note this is the OPPOSITE end of the spectrum from the wavelet grid problem:**
+
+```
+epsilon       worst at HFA/gamma  (59%, 43% of dynamic range lost)
+wavelet grid  worst at delta      (40% band coverage, 1.2 Hz gap)
+```
+
 ## Channel metadata: use src/channel_metadata.py
 
 `src/channel_metadata.py` is the canonical accessor (TODO A6). It reads the
