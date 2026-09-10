@@ -682,25 +682,44 @@ Strictly ordered; each blocks the next.
 
 ## C. Correctness fixes — small, do when convenient
 
-- [ ] **C0b. FOOOF light pipeline — PAUSED 2026-09-10, ready to relaunch.**
-  `analysis_scripts/extract_fooof_light.py` + `launch_fooof_light.sh` are
-  written, smoke-tested (82 fits/sec pinned, ~7 min/recording, 75 recordings,
-  ~35 min across 16 workers). Nothing was written; paused before the first
-  output file.
+- [ ] **C0b. FOOOF light pipeline — WRITTEN AND TESTED, NOT RUN.**
+  `analysis_scripts/extract_fooof_light.py` + `launch_fooof_light.sh`.
+  Smoke-tested at 82 fits/sec pinned, ~7 min/recording, 75 recordings,
+  ~35 min across 16 workers. Deliberately paused 2026-09-10 before the first
+  output file; nothing was written.
   **Do this before relaunching:** rename `{band}_CF` -> `{band}_ArgmaxHz` and
   add `{band}_CF_if_present` (NaN below PRESENCE_THRESHOLD). In the OLD
-  pipeline `{band}_CF` meant a fitted Gaussian centre and was NaN when absent;
-  here it is a raw argmax that is NEVER NaN, so the same name carries two
-  different meanings across tables — a silent failure if the two are ever
-  joined or compared.
+  pipeline `{band}_CF` was a fitted Gaussian centre and was NaN when no peak
+  was found; here it is a raw argmax that is NEVER NaN. Same name, two
+  meanings — a silent error if the tables are ever joined or compared.
   Relaunch: `bash analysis_scripts/launch_fooof_light.sh 16`
 
-- [ ] **C0c. Power extraction: 20 files outstanding.** 304 of 324 present in
-  `/media/christine/Data/Movie_data/full_raw_log_power_rescale`. Hungarian and
-  inscapes complete. Missing: NS127_02, NS135, NS136, NS137 (english, run-01)
-  for theta/alpha/beta/gamma/HFA — they have delta only, so the separate delta
-  worker covered them and the band workers never did. No processes running.
+- [x] **C0c. Power extraction — DONE 2026-09-10.** All 324 Tier 1 files present
+  in `/media/christine/Data/Movie_data/full_raw_log_power_rescale`
+  (54 recordings x 6 bands). The last 20 (NS127_02/NS135/NS136/NS137 english,
+  non-delta bands) were completed by Christine in Spyder.
 
+- [x] **C0d. Tier 1 -> Tier 2 for the rescaled power — DONE 2026-09-10.**
+  `analysis_scripts/window_bandpass_power_robust.py` ->
+  `/media/christine/Samsung/Movie_data/windowed_power_10s_rescale/`
+  324 files x 2 window statistics, 286 MB each, 0% NaN, verified against a
+  hand computation to 0.00e+00. Old `windowed_power_10s` untouched.
+
+- [ ] **C0e. DECIDE the window statistic: `trim20` vs `median`.** Both are on
+  disk; downstream should use ONE. Mean and median agree at only r ~ 0.93 and
+  diverge most in DELTA (17.9% of windows differ by >0.25 SD), so this changes
+  the top-line result rather than polishing it. Recommendation: **trim20** —
+  it keeps the mean's interpretation and efficiency (r = 0.97 with the mean)
+  with a 20% breakdown point, ~10x what an IED at 1-2% of a window needs;
+  and sd(median) >= sd(mean) in the low bands, so the median is not merely
+  stripping artifact variance. Empirical tiebreak: run the top-line contrast
+  both ways and check the effect is stable under both.
+
+- [ ] **C0f. Window counts vary 236-239 across recordings.** Recording length,
+  not a bug — the OLD Tier 2 shows the same spread. But a downstream merge must
+  not assume a fixed grid: attention labels come from `time_isc` with 237
+  entries, so NS174_02 (238) and NS174_03 (239) will silently lose their extra
+  windows on a positional join. Handle explicitly in B4.
 
 - [ ] **C0. FOOOF `aperiodic_mode` is misspecified — refit required.**
   Measured 2026-09-10 (`analysis_scripts/compare_fooof_aperiodic_mode.py`,

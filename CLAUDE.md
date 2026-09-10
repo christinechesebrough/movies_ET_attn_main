@@ -471,6 +471,80 @@ Unresolved - possibly a different `fooof` version in the June run
   `n_fft = 2*fs` there are only ~5 bins below 3.5 Hz - reinforcing the case for
   a separate long-window pass for the low band.
 
+## New Tier 2: `windowed_power_10s_rescale` (2026-09-10)
+
+The epsilon-fixed bandpass power has been extracted (324 Tier 1 files, 54
+recordings x 6 bands, on the **Data** drive) and windowed to Tier 2 (on
+**Samsung**). Produced by `analysis_scripts/window_bandpass_power_robust.py`.
+
+```
+/media/christine/Data/Movie_data/full_raw_log_power_rescale/
+    {band}/{band}_power_log_{band}_{movie}/{pat}/
+        {pat}_{movie}_{run}_{band}_cortical_power_log.csv
+        4 atlas rows + 179,710 samples @ 300 Hz (600 Hz decimated by 2)
+   |
+/media/christine/Samsung/Movie_data/windowed_power_10s_rescale/
+    windowed_robustz_power_log_{movie}_{band}/{pat}/
+        {pat}_{run}_{movie}_{band}_power_log_robustz_rolling_trim20_10s.csv
+        {pat}_{run}_{movie}_{band}_power_log_robustz_rolling_median_10s.csv
+        4 atlas rows + 236-239 windows
+```
+
+**This does not replace `windowed_power_10s`.** The old outputs stay as
+validation references (see the three-condition design above).
+
+### Reductions, and why both are robust
+
+    per contact   z = (x - median) / (1.4826 * MAD), over the whole recording
+    per window    20% trimmed mean ('trim20') AND median, written separately
+
+Bad windows are INCLUDED in extraction and filtered only downstream, so the
+window statistic has to tolerate artifacts rather than assume they are gone.
+
+**Two statistics are on disk because the choice is not cosmetic.** Measured on
+one english recording per band:
+
+| band | r(mean,med) | r(mean,trim20) | \|diff\|>0.25 SD | sd(mean) | sd(med) |
+|---|---|---|---|---|---|
+| delta | 0.925 | 0.969 | **17.9%** | 0.261 | 0.270 |
+| theta | 0.936 | 0.974 | 6.9% | 0.296 | 0.306 |
+| alpha | 0.941 | 0.977 | 4.8% | 0.324 | 0.340 |
+| gamma | 0.931 | 0.969 | 0.1% | 0.174 | 0.174 |
+| HFA | 0.930 | 0.968 | 1.4% | 0.223 | 0.219 |
+
+Mean and median agree at only r ~ 0.93, and disagree most in **delta** - the
+band the current claims rest on. Note `sd(median) >= sd(mean)` in the low
+bands, so the median is NOT simply stripping artifact variance; within a 10 s
+delta window the 3,000 samples span only ~10-30 cycles and are heavily
+autocorrelated, which costs the median its usual efficiency advantage.
+
+Recommended default: **trim20**. See TODO C0e - the decision is still open.
+
+### Window counts vary: 236-239
+
+Recording length, not a bug; the old Tier 2 shows the same spread. But
+attention labels come from `time_isc` with 237 entries, so a positional join
+silently drops the extra windows of NS174_02 (238) and NS174_03 (239). Any
+Tier 2 -> Tier 3 merge must handle this explicitly.
+
+## Performance: pin BLAS threads for FOOOF and other many-small-fits work
+
+FOOOF is thousands of tiny `curve_fit` calls. Unpinned, numpy spawns a thread
+pool per call and thrashes: **8.6 fits/sec unpinned vs 82 pinned, a 9.5x
+difference** that dominated every runtime estimate until it was measured.
+
+```python
+import os
+for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
+          'NUMEXPR_NUM_THREADS', 'VECLIB_MAXIMUM_THREADS'):
+    os.environ.setdefault(v, '1')
+import numpy as np      # must come AFTER
+```
+
+Parallelise across recordings instead, one pinned worker per slice. Note that
+disk-bound stages scale much worse (1.35x-2.1x observed), so match the worker
+count to whether the stage is CPU- or I/O-bound.
+
 ## Channel metadata: use src/channel_metadata.py
 
 `src/channel_metadata.py` is the canonical accessor (TODO A6). It reads the
