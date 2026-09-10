@@ -81,7 +81,7 @@ sys.path.insert(0, f'/{machine_path}/Samsung/iEEG2NWB-main')
 
 #vids = ['inscapes','despicable_me_english']#,'despicable_me_english']
 vids = ['despicable_me_hungarian','inscapes','despicable_me_english']#,'despicable_me_english']
-freq_bands = ['delta']#'theta','alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
+freq_bands = ['theta','alpha','beta','gamma','HFA']#['delta','theta','alpha','gamma','HFA']#'beta','gamma','HFA'] #'delta','theta','alpha','beta','gamma'
 #freq_bands = ['theta_alpha','all_gamma']
 
 ref = 'avg'
@@ -570,6 +570,7 @@ for vid in vids:
 
             lfp = mne_data.get_data()
             fs_lfp = mne_data.info['sfreq']
+            fs_lfp_raw = fs_lfp      # A12: preserved; fs_lfp is decimated per band
             time_lfp = mne_data.times
 
             lfp_ip = lfp[idx_ip, :]
@@ -581,6 +582,13 @@ for vid in vids:
 
             # ---- all bands for THIS recording; .fif already loaded ----
             for freq_band in freq_bands:
+                # A12 FIX: the decimation below reduces fs_lfp. The .fif is now
+                # loaded ONCE and this loop runs per band, so that reduction would
+                # compound (600 -> 300 -> 150 -> 75 ...) and every band after the
+                # first would design its bandpass filter against the wrong rate.
+                # Reset from the preserved raw value on each iteration.
+                fs_lfp = fs_lfp_raw
+
                 if freq_band == 'alpha':
                     freq_range = (8, 13)
                 elif freq_band == 'HFA':
