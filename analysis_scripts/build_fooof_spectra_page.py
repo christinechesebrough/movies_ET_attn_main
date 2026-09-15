@@ -131,6 +131,12 @@ sec0 = '''<section class="entry" id="entry-components">
     <p class="fig-sub">Same panels, each contact's all-window mean curve subtracted before averaging. Shaded band: SEM across contacts.</p>
     <div id="sp-rel"></div>
   </figure>
+  <figure id="fig-sp-par">
+    <p class="fig-title">Offset, knee and exponent as spectra</p>
+    <p class="fig-sub">Each state's mean aperiodic parameters (mean over contacts of the contact's state mean) drawn as the curve they define, offset minus log10 of knee plus f to the exponent, minus the same curve from the contact-mean parameters. The knee is taken as knee frequency to the exponent, because the raw knee parameter is so skewed that its mean is meaningless; offset, exponent and knee frequency are the three scalars the tests below use. First row: all three at the state's values. Next rows: only the named parameter takes the state's value, the other two stay at the contact mean, so each row is the shape change that one scalar implies. An exponent change pivots at 1 Hz by construction of the model. Six states; columns: films.</p>
+    <div id="sp-par"></div>
+    <div class="tablewrap"><table id="sp-par-table"></table></div>
+  </figure>
   <figure id="fig-sp-three">
     <p class="fig-title">State minus contact mean, three states</p>
     <div class="legend" id="sp-legend3"></div>
@@ -183,6 +189,20 @@ sec0_js = r'''
     for(let c=0;c<3;c++){ h+=`<p class="fgroup">${CN[c]}</p>`+row3(J.videos.map(vid=>{const ser=[];states.forEach((st,i)=>{const d=get(a,vid,net,st); if(!d) return; ser.push({y:d[kind][c],sem:kind==='rel'?d.rel_sem[c]:null,c:colors[i],label:`${st}, n=${d.n} contacts, ${d.np} people`});}); return `<div class="panel dev">${ser.length?chart(ser,{zero,tag:VN[vid].replace('Despicable Me, ','DM ')}):'<p class="meta">no data</p>'}</div>`;}).join('')); }
     document.getElementById(host).innerHTML=h;
   }
+  // curve from (offset, knee FREQUENCY, exponent): knee = f_knee^exponent. The raw knee
+  // parameter is f_knee^exponent and so absurdly skewed that its mean is meaningless.
+  const apc=(p)=>{const k=Math.pow(Math.max(p[3],1e-3),p[2]);return F.map(f=>p[0]-Math.log10(k+Math.pow(f,p[2])));};
+  const PN=['all three parameters','exponent only','knee frequency only','offset only'], PI=[null,2,3,0];
+  function par(){
+    const a=selA.value,net=selN.value; let h='';
+    PN.forEach((name,ri)=>{h+=`<p class="fgroup">${name}</p>`+row3(J.videos.map(vid=>{const base=get(a,vid,net,'all'); if(!base) return '<div class="panel dev"><p class="meta">no data</p></div>'; const b=apc(base.par_abs); const ser=[];
+      J.regions.forEach((st,i)=>{const d=get(a,vid,net,st); if(!d) return; let p=base.par_abs.slice(); if(PI[ri]===null) p=d.par_abs.slice(); else p[PI[ri]]=d.par_abs[PI[ri]]; const y=apc(p).map((v,k)=>v-b[k]); ser.push({y,c:cols6()[i],label:`${st}: offset ${d.par_abs[0].toFixed(3)}, exponent ${d.par_abs[2].toFixed(3)}, f_knee ${d.par_abs[3].toFixed(2)} Hz`});});
+      return `<div class="panel dev">${ser.length?chart(ser,{zero:true,tag:VN[vid].replace('Despicable Me, ','DM ')}):'<p class="meta">no data</p>'}</div>`;}).join(''));});
+    document.getElementById('sp-par').innerHTML=h;
+    let t='<tr><th>film</th><th>state</th><th>offset</th><th>exponent</th><th>f_knee (Hz)</th><th>Δ offset</th><th>Δ exponent</th><th>Δ f_knee</th><th>n</th></tr>';
+    J.videos.forEach(vid=>{['all'].concat(J.regions).forEach(st=>{const d=get(a,vid,net,st); if(!d) return; const p=d.par_abs,q=d.par_rel; t+=`<tr><td>${VN[vid]}</td><td>${st==='all'?'all windows':st}</td><td>${p[0].toFixed(3)}</td><td>${p[2].toFixed(3)}</td><td>${p[3].toFixed(2)}</td><td>${st==='all'?'':(q[0]>=0?'+':'')+q[0].toFixed(4)}</td><td>${st==='all'?'':(q[2]>=0?'+':'')+q[2].toFixed(4)}</td><td>${st==='all'?'':(q[3]>=0?'+':'')+q[3].toFixed(3)}</td><td>${d.n}</td></tr>`;});});
+    document.getElementById('sp-par-table').innerHTML=t;
+  }
   function two(){
     const a=selA.value,c=+selC.value; const nets=['all'].concat(HYP[a].filter(n=>J.atlases[a].networks.includes(n))); let h='';
     nets.forEach(net=>{h+=`<div style="margin-top:8px"><p class="meta" style="margin:0 0 2px;font-weight:500;color:var(--ink)">${net==='all'?'all contacts':net}</p>`+row3(J.videos.map(vid=>{const ser=[];[['Internal2','Internal'],['External2','External']].forEach(([st,lab],i)=>{const d=get(a,vid,net,st); if(!d) return; ser.push({y:d.rel[c],sem:d.rel_sem[c],c:C2c()[i],label:`${lab}, n=${d.n}`});}); return `<div class="panel dev">${ser.length?chart(ser,{zero:true,tag:VN[vid].replace('Despicable Me, ','DM ')}):'<p class="meta">no data</p>'}</div>`;}).join(''))+'</div>';});
@@ -191,7 +211,7 @@ sec0_js = r'''
   function render(){
     const a=selA.value,net=selN.value; const d=get(a,J.videos[0],net,'all');
     document.getElementById('sp-n').textContent=J.videos.map(v=>{const q=get(a,v,net,'all');return q?`${VN[v].replace('Despicable Me, ','DM ')}: ${q.n} contacts / ${q.np} people`:'';}).join('   ');
-    block('abs',J.regions,cols6(),'sp-abs',false); block('rel',J.regions,cols6(),'sp-rel',true); block('rel',['External','Middle','Internal'],C3c(),'sp-three',true); two();
+    block('abs',J.regions,cols6(),'sp-abs',false); block('rel',J.regions,cols6(),'sp-rel',true); par(); block('rel',['External','Middle','Internal'],C3c(),'sp-three',true); two();
   }
   selA.addEventListener('change',()=>{fillNets();render();}); selN.addEventListener('change',render); selC.addEventListener('change',two);
   fillNets(); render();

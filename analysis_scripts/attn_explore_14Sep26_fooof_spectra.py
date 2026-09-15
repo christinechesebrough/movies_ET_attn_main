@@ -56,7 +56,7 @@ OUT = f'{MOVIE_DATA}/attn_explore_14Sep26/fooof_spectra'
 REC_DIR = f'{OUT}/rec'
 AGGREGATE = os.environ.get('FOOOF_SPECTRA_AGGREGATE', '0') == '1'
 WORKER = int(os.environ.get('FOOOF_WORKER', 0)); N_WORKERS = int(os.environ.get('FOOOF_N_WORKERS', 1))
-OVERWRITE = False
+OVERWRITE = True   # 2026-09-15: params added to the npz; set False to resume a partial run
 
 COMPONENTS = ['total', 'aperiodic', 'periodic']
 STATES = S.REG + ['External', 'Middle', 'Internal', 'Internal2', 'External2', 'all']
@@ -137,7 +137,18 @@ def process_recording(r, labels):
     per = logpsd - ap
     comp = np.stack([logpsd, ap, per], axis=2)              # ch x win x comp x freq
     valid = np.isfinite(comp).all(axis=(2, 3))              # ch x win
+    # per-window aperiodic parameters, aligned to (channel, window); knee also as f_knee
+    P = np.full((len(chans), n, 4), np.nan, np.float32)
+    ch_index2 = {c: i for i, c in enumerate(chans)}
+    for ch, g in d.groupby('Channel'):
+        i = ch_index2.get(ch)
+        if i is None:
+            continue
+        w = g.Window_Index.to_numpy(int); k = g.Aperiodic_Knee.to_numpy(float); e = g.Aperiodic_Exponent.to_numpy(float)
+        P[i, w, 0] = g.Aperiodic_Offset.to_numpy(float); P[i, w, 1] = k; P[i, w, 2] = e
+        P[i, w, 3] = np.where((k > 0) & (e > 0), k ** (1.0 / np.maximum(e, 1e-6)), np.nan)
     curves = np.full((len(chans), len(STATES), 3, len(fr)), np.nan, np.float32)
+    params = np.full((len(chans), len(STATES), 4), np.nan, np.float32)   # offset, knee, exponent, f_knee
     n_win = np.zeros((len(chans), len(STATES)), np.int16)
     for si, st in enumerate(STATES):
         m = masks[st]
@@ -145,11 +156,12 @@ def process_recording(r, labels):
             mm = m & valid[ci]
             if mm.sum() >= MIN_WIN:
                 curves[ci, si] = comp[ci, mm].mean(axis=0); n_win[ci, si] = mm.sum()
+                params[ci, si] = np.nanmean(P[ci, mm], axis=0)
     nets = S.networks_of_contacts(r.video, r.patient, r.run)
     y17 = np.array([nets.get(c, {}).get('Y17', 'unknown') for c in chans]); y7 = np.array([nets.get(c, {}).get('Y7', 'unknown') for c in chans])
     os.makedirs(REC_DIR, exist_ok=True)
     np.savez_compressed(out, freqs=fr, states=np.array(STATES), components=np.array(COMPONENTS), contacts=np.array(chans),
-                        Y17=y17, Y7=y7, curves=curves, n_win=n_win, patient=r.patient, person=L.person_of(r.patient), video=r.video, run=r.run)
+                        Y17=y17, Y7=y7, curves=curves, params=params, n_win=n_win, patient=r.patient, person=L.person_of(r.patient), video=r.video, run=r.run)
     print(f'  {r.video:24s} {r.patient:10s} {len(chans):4d} contacts, {n} windows, {time.time()-t0:.0f}s', flush=True)
 
 
@@ -157,20 +169,21 @@ def aggregate():
     files = sorted(glob.glob(f'{REC_DIR}/*.npz'))
     print(f'aggregating {len(files)} recordings', flush=True)
     rows = []   # one row per contact x state: curves kept in arrays
-    curves_abs, curves_rel, meta = [], [], []
+    curves_abs, curves_rel, par_abs, par_rel, meta = [], [], [], [], []
     for f in files:
         z = np.load(f, allow_pickle=True)
-        fr = z['freqs']; cv = z['curves']; nw = z['n_win']
+        fr = z['freqs']; cv = z['curves']; nw = z['n_win']; pr = z['params']
         i_all = list(z['states']).index('all')
         for ci in range(cv.shape[0]):
-            base = cv[ci, i_all]
+            base = cv[ci, i_all]; pbase = pr[ci, i_all]
             for si, st in enumerate(z['states']):
                 if nw[ci, si] < MIN_WIN or not np.isfinite(cv[ci, si]).all():
                     continue
                 meta.append(dict(video=str(z['video']), patient=str(z['patient']), person=str(z['person']), contact=f"{z['patient']}_{z['run']}_{z['contacts'][ci]}",
                                  Y17=str(z['Y17'][ci]), Y7=str(z['Y7'][ci]), state=str(st), n_win=int(nw[ci, si])))
                 curves_abs.append(cv[ci, si]); curves_rel.append(cv[ci, si] - base)
-    M = pd.DataFrame(meta); A = np.stack(curves_abs); R = np.stack(curves_rel)
+                par_abs.append(pr[ci, si]); par_rel.append(pr[ci, si] - pbase)
+    M = pd.DataFrame(meta); A = np.stack(curves_abs); R = np.stack(curves_rel); PA = np.stack(par_abs); PR = np.stack(par_rel)
     print(f'  {len(M):,} contact-states, {M.contact.nunique():,} contacts', flush=True)
     agg = {}; keys = []
     for atlas in S.ATLASES:
@@ -227,6 +240,8 @@ def aggregate():
                         'abs': [rnd(a.mean(0)[c]) for c in range(3)],
                         'rel': [rnd(rr.mean(0)[c]) for c in range(3)],
                         'rel_sem': [rnd((rr.std(0, ddof=1) / np.sqrt(len(idx)))[c]) for c in range(3)],
+                        # mean aperiodic parameters [offset, knee, exponent, f_knee]: absolute, and state minus contact mean
+                        'par_abs': rnd(np.nanmean(PA[idx], axis=0)), 'par_rel': rnd(np.nanmean(PR[idx], axis=0)),
                         'n': int(len(idx)), 'np': int(M.person.iloc[idx].nunique())}
     json.dump(J, open(f'{OUT}/spectra_by_state.json', 'w'), separators=(',', ':'))
     print(f'  -> {OUT}/spectra_by_state.json  {os.path.getsize(f"{OUT}/spectra_by_state.json")/1e6:.1f} MB', flush=True)
