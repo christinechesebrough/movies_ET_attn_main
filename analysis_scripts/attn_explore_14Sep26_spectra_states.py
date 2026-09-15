@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import compare_attn_states_lmm as L
-from attn_explore_14Sep26_spectrograms import find_windowed, y7_of, WIN_DIR, VN, Y7
+from attn_explore_14Sep26_spectrograms import find_windowed, WIN_DIR, VN, Y7
 warnings.filterwarnings('ignore')
 for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
     os.environ.setdefault(v, '1')
@@ -44,6 +44,8 @@ LABELS = f'{MOVIE_DATA}/attention_labels_10s/attention_labels_10s_pooled_explore
 OUT = f'{MOVIE_DATA}/attn_explore_14Sep26/spectra_states'
 FIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'reports', 'spectrograms')
 VIDS = L.VIDEOS
+ATLAS = 'Y7'           # 'Y7' | 'Y17'   (figure files get a _y17 suffix for Y17)
+SUF = '' if ATLAS == 'Y7' else '_y17'
 EDGES = [-np.inf, -1.5, -0.4, 0.4, 0.8, 1.2, np.inf]
 REG = ['far external', 'external', 'middle', 'ambiguous', 'internal', 'far internal']
 GATE_INT_COL, GATE_INT_T = 'mahal_time_z', 0.6
@@ -65,7 +67,15 @@ def stage2(d):
 
 if __name__ == '__main__':
     os.makedirs(OUT, exist_ok=True); os.makedirs(FIG, exist_ok=True)
+    def nets_of(vid, pat, run):
+        f = f'{L.T2_DIR}/windowed_robustz_power_log_{vid}_alpha/{pat}/{pat}_{run}_{vid}_alpha_power_log_robustz_rolling_{L.STAT}_10s.csv'
+        if not os.path.exists(f):
+            return {}
+        a = pd.read_csv(f, nrows=4).set_index('Atlas').iloc[:, 2:]
+        row = a.loc['Y7_Atlas_Region'] if ATLAS == 'Y7' else a.loc['Y17_Atlas_Region']
+        return {c: (L.Y7_TO_LONG.get(str(v), str(v)) if ATLAS == 'Y7' else str(v)) for c, v in row.items()}
     labels = pd.read_csv(LABELS); included = pd.read_csv(L.INCLUDED)
+    NETS = Y7 if ATLAS == 'Y7' else sorted({v for r in included.itertuples() for v in nets_of(r.video, r.patient, r.run).values()} - L.EXCLUDE_REGIONS)
     net_state = {}   # (net, vid) -> list of (regions x freq) arrays per recording
     contact_rows = []  # per contact: Internal, External mean spectra (freq arrays)
     freqs = None; nrec = {}
@@ -88,9 +98,9 @@ if __name__ == '__main__':
         region[np.isin(region, ['internal', 'far internal']) & ~(di > GATE_INT_T)] = None
         region[np.isin(region, ['external', 'far external']) & ~(de <= GATE_EXT_MAX)] = None
         Z = Z - np.nanmean(Z[:, :, good], axis=2, keepdims=True)                 # contact-relative
-        nets = y7_of(r.video, r.patient, r.run); nrec[r.video] = nrec.get(r.video, 0) + 1
+        nets = nets_of(r.video, r.patient, r.run); nrec[r.video] = nrec.get(r.video, 0) + 1
         person = L.person_of(r.patient)
-        for net in Y7:
+        for net in NETS:
             idx = [i for i, c in enumerate(labs) if nets.get(c) == net]
             if not idx:
                 continue
@@ -120,16 +130,16 @@ if __name__ == '__main__':
     for key, idx in R.groupby(['network', 'video']).groups.items():
         R.loc[idx, 'p_fdr'] = multipletests(R.loc[idx, 'p'].fillna(1), method='fdr_bh')[1]
     R['sig'] = R.p_fdr < 0.05
-    R.to_csv(f'{OUT}/contrast.csv', index=False)
+    R.to_csv(f'{OUT}/contrast{SUF}.csv', index=False)
     net_state = {k: v for k, v in net_state.items() if len(v) >= MIN_REC}
     H = {k: np.nanmean(np.stack(v), axis=0) for k, v in net_state.items()}
-    np.savez_compressed(f'{OUT}/spectra.npz', freqs=freqs, regions=np.array(REG), keys=np.array([f'{k[0]}|{k[1]}' for k in H]), heat=np.stack(list(H.values())), n=np.array([len(net_state[k]) for k in H]))
+    np.savez_compressed(f'{OUT}/spectra{SUF}.npz', freqs=freqs, regions=np.array(REG), keys=np.array([f'{k[0]}|{k[1]}' for k in H]), heat=np.stack(list(H.values())), n=np.array([len(net_state[k]) for k in H]))
     # per-band summary of the contrast
     R['band'] = pd.cut(R.freq, [0] + [b[2] + 0.5 for b in BANDS], labels=[b[0] for b in BANDS])
     print('\nInternal - External per band (mean z across frequencies in band):'); print(R.groupby(['video', 'network', 'band'], observed=True).z.mean().unstack().round(2).to_string())
     # figures per network
     vids_present = [v for v in VIDS if any(k[1] == v for k in H)]
-    for net in Y7:
+    for net in NETS:
         fig, axes = plt.subplots(len(VIDS), 2, figsize=(11, 3.3 * len(VIDS)), gridspec_kw={'width_ratios': [1.15, 1.6]}, squeeze=False)
         for i, vid in enumerate(VIDS):
             ax = axes[i, 0]
@@ -154,18 +164,18 @@ if __name__ == '__main__':
             ax.tick_params(labelsize=7)
         fig.suptitle(f'{net}: wavelet power by gaze state (six PC1 regions, by-timepoint deviation gate: internal > {GATE_INT_T}, external <= {GATE_EXT_MAX:g})', fontsize=10)
         fig.tight_layout(rect=[0, 0, 0.92, 0.96]); cax = fig.add_axes([0.935, 0.2, 0.012, 0.6]); fig.colorbar(im, cax=cax).set_label('z, contact-relative, network mean', fontsize=8); cax.tick_params(labelsize=7)
-        slug = re.sub(r'[^a-z]+', '_', net.lower()).strip('_'); fig.savefig(f'{FIG}/spectra_{slug}.png', dpi=130); plt.close(fig); print('wrote spectra_' + slug)
+        slug = re.sub(r'[^a-z0-9]+', '_', net.lower()).strip('_'); fig.savefig(f'{FIG}/spectra{SUF}_{slug}.png', dpi=130); plt.close(fig); print('wrote spectra' + SUF + '_' + slug)
     # summary: networks x frequency, Internal - External z, one panel per film
-    fig, axes = plt.subplots(1, len(VIDS), figsize=(5.2 * len(VIDS), 3.6), squeeze=False)
+    fig, axes = plt.subplots(1, len(VIDS), figsize=(5.2 * len(VIDS), 3.6 if ATLAS == 'Y7' else 6.2), squeeze=False)
     for j, vid in enumerate(VIDS):
         ax = axes[0, j]; rr = R[R.video == vid]
         if len(rr):
-            M = rr.pivot(index='network', columns='freq', values='z').reindex(Y7); Sg = rr.pivot(index='network', columns='freq', values='sig').reindex(Y7)
-            im = ax.pcolormesh(np.r_[freqs - 1, freqs[-1] + 1], np.arange(len(Y7) + 1), M.values, cmap='RdBu_r', norm=TwoSlopeNorm(vcenter=0, vmin=-5, vmax=5), shading='flat', rasterized=True)
+            M = rr.pivot(index='network', columns='freq', values='z').reindex(NETS); Sg = rr.pivot(index='network', columns='freq', values='sig').reindex(NETS)
+            im = ax.pcolormesh(np.r_[freqs - 1, freqs[-1] + 1], np.arange(len(NETS) + 1), M.values, cmap='RdBu_r', norm=TwoSlopeNorm(vcenter=0, vmin=-5, vmax=5), shading='flat', rasterized=True)
             ys, xs = np.where(Sg.values == True); ax.scatter(freqs[xs], ys + 0.5, s=5, color='#151b1a')
-            ax.set_xscale('log'); ax.set_xticks([2, 4, 8, 16, 32, 64, 150]); ax.set_xticklabels(['2', '4', '8', '16', '32', '64', '150']); ax.set_yticks(np.arange(len(Y7)) + 0.5); ax.set_yticklabels([n.split(' (')[0] for n in Y7], fontsize=7)
+            ax.set_xscale('log'); ax.set_xticks([2, 4, 8, 16, 32, 64, 150]); ax.set_xticklabels(['2', '4', '8', '16', '32', '64', '150']); ax.set_yticks(np.arange(len(NETS)) + 0.5); ax.set_yticklabels([n.split(' (')[0] for n in NETS], fontsize=7)
             ax.set_title(f'{VN[vid]}: Internal minus External, z per frequency (dots FDR < 0.05)', fontsize=8.5); ax.set_xlabel('Hz', fontsize=8)
         else:
             ax.text(0.5, 0.5, 'pending', ha='center', va='center', color='#8a9391', transform=ax.transAxes); ax.set_title(VN[vid], fontsize=8.5); ax.set_xticks([]); ax.set_yticks([])
         ax.tick_params(labelsize=7)
-    fig.tight_layout(); fig.savefig(f'{FIG}/spectra_summary.png', dpi=130); plt.close(fig); print('wrote spectra_summary'); print(f'-> {OUT}')
+    fig.tight_layout(); fig.savefig(f'{FIG}/spectra{SUF}_summary.png', dpi=130); plt.close(fig); print('wrote spectra' + SUF + '_summary'); print(f'-> {OUT}')

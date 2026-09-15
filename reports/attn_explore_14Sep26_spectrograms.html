@@ -34,7 +34,8 @@ figcaption{font-family:var(--sans);font-size:13.5px;color:var(--ink-2);margin-to
   <p>States are the six PC1 regions, cut on within-viewer PC1 z at -1.5, -0.4, 0.4, 0.8 and 1.2, with the by-timepoint deviation gate at both ends: the two internal regions keep only windows whose deviation z across viewers at that scene is above 0.6, and the two external regions keep only windows at or below 0. Windows failing a gate are dropped. Each contact's spectrum is robust-z-scored against its own recording and centred on its own mean over all good windows, so the heatmap shows departure from the contact's average at each frequency, averaged over the network's contacts and then over recordings. The contrast is a mixed model per frequency on the per-contact Internal minus External difference with a person random intercept; dots mark frequencies significant after FDR over the 76 frequencies within network and film.</p>
   <p class="note">Recordings are the pipeline's neural inclusion list, the same 42 the power contrasts use: 16 English, 13 Hungarian, 13 Inscapes. The colour range is ±0.12 z; values beyond it saturate.</p>
 </div>
-<h2>All networks: Internal minus External by frequency</h2>
+<div class="prose"><h2>Yeo-7 networks</h2></div>
+<h2>All Y7 networks: Internal minus External by frequency</h2>
 <figure><img src="spectrograms/spectra_summary.png" alt="Internal minus External z by frequency for all networks"></figure>
 <h2>Visual network</h2>
 <figure><img src="spectrograms/spectra_visual_network_vn.png" alt="Visual network state spectra"></figure>
@@ -51,4 +52,45 @@ figcaption{font-family:var(--sans);font-size:13.5px;color:var(--ink-2);margin-to
 <h2>Default mode network</h2>
 <figure><img src="spectrograms/spectra_default_mode_network_dmn.png" alt="Default mode network state spectra"></figure>
 
+
+<div class="prose">
+  <h2>Yeo-17 networks</h2>
+  <p>The same analysis at the finer parcellation. The summary map first, then one figure per network.</p>
+</div>
+<h2>All Y17 networks: Internal minus External by frequency</h2>
+<figure><img src="spectrograms/spectra_y17_summary.png" alt="Internal minus External z by frequency for all Y17 networks"></figure>
+<h2>Control A</h2>
+<figure><img src="spectrograms/spectra_y17_control_a.png" alt="Control A state spectra"></figure>
+<h2>Control B</h2>
+<figure><img src="spectrograms/spectra_y17_control_b.png" alt="Control B state spectra"></figure>
+<h2>Control C</h2>
+<figure><img src="spectrograms/spectra_y17_control_c.png" alt="Control C state spectra"></figure>
+<h2>Default A</h2>
+<figure><img src="spectrograms/spectra_y17_default_a.png" alt="Default A state spectra"></figure>
+<h2>Default B</h2>
+<figure><img src="spectrograms/spectra_y17_default_b.png" alt="Default B state spectra"></figure>
+<h2>Default C</h2>
+<figure><img src="spectrograms/spectra_y17_default_c.png" alt="Default C state spectra"></figure>
+<h2>Dorsal Attention A</h2>
+<figure><img src="spectrograms/spectra_y17_dorsal_attention_a.png" alt="Dorsal Attention A state spectra"></figure>
+<h2>Dorsal Attention B</h2>
+<figure><img src="spectrograms/spectra_y17_dorsal_attention_b.png" alt="Dorsal Attention B state spectra"></figure>
+<h2>Limbic A</h2>
+<figure><img src="spectrograms/spectra_y17_limbic_a.png" alt="Limbic A state spectra"></figure>
+<h2>Limbic B</h2>
+<figure><img src="spectrograms/spectra_y17_limbic_b.png" alt="Limbic B state spectra"></figure>
+<h2>Salience / Ventral Attention A</h2>
+<figure><img src="spectrograms/spectra_y17_salience_ventral_attention_a.png" alt="Salience / Ventral Attention A state spectra"></figure>
+<h2>Salience / Ventral Attention B</h2>
+<figure><img src="spectrograms/spectra_y17_salience_ventral_attention_b.png" alt="Salience / Ventral Attention B state spectra"></figure>
+<h2>Somatomotor A</h2>
+<figure><img src="spectrograms/spectra_y17_somatomotor_a.png" alt="Somatomotor A state spectra"></figure>
+<h2>Somatomotor B</h2>
+<figure><img src="spectrograms/spectra_y17_somatomotor_b.png" alt="Somatomotor B state spectra"></figure>
+<h2>Temporal Parietal</h2>
+<figure><img src="spectrograms/spectra_y17_temporal_parietal.png" alt="Temporal Parietal state spectra"></figure>
+<h2>Visual Central (Visual A)</h2>
+<figure><img src="spectrograms/spectra_y17_visual_central_visual_a.png" alt="Visual Central (Visual A) state spectra"></figure>
+<h2>Visual Peripheral (Visual B)</h2>
+<figure><img src="spectrograms/spectra_y17_visual_peripheral_visual_b.png" alt="Visual Peripheral (Visual B) state spectra"></figure>
 </div>
