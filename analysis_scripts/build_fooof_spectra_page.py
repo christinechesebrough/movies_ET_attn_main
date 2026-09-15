@@ -155,7 +155,7 @@ sec0_js = r'''
   const cols6=()=>dark()?RCd:RC; const C3c=()=>dark()?['#c98f10','#7f8886','#7c6ad4']:['#9a6d00','#8e9491','#5546b8']; const C2c=()=>dark()?['#7c6ad4','#c98f10']:['#5546b8','#9a6d00'];
   const CN=['total (log10 power)','aperiodic (log10)','periodic (log10, flattened)'];
   const short=r=>r.replace(' Network','').replace('Visual Central (Visual A)','Vis Central').replace('Visual Peripheral (Visual B)','Vis Periph').replace('Dorsal Attention','DorsAttn').replace(/\s*\(.*?\)/g,'');
-  const F=J.freqs, lx=F.map(Math.log10), x0=lx[0], x1=lx[lx.length-1];
+  const F=J.freqs, lx=F.map(Math.log10), x0=Math.log10(1), x1=Math.log10(150);   // the fit range, so 150 is a labelled tick
   function chart(series,opts){
     const W=340,L=46,R=8,T=14,B=26,pw=W-L-R,ph=opts.h||120,H=T+ph+B;
     let lo=Infinity,hi=-Infinity; series.forEach(s=>{s.y.forEach((v,i)=>{const e=s.sem?s.sem[i]:0; if(v-e<lo)lo=v-e; if(v+e>hi)hi=v+e;});});
@@ -163,7 +163,7 @@ sec0_js = r'''
     const sx=v=>L+(v-x0)/(x1-x0)*pw, sy=v=>T+(hi-v)/(hi-lo)*ph;
     let s=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;overflow:visible">`;
     if(opts.tag) s+=`<text class="grp" x="${W-R}" y="9" text-anchor="end">${opts.tag}</text>`;
-    [1,2,5,10,20,50,100].forEach(f=>{const x=sx(Math.log10(f)); s+=`<line class="grid" x1="${x}" x2="${x}" y1="${T}" y2="${T+ph}"/><text class="tick" x="${x}" y="${T+ph+12}" text-anchor="middle">${f}</text>`;});
+    [1,2,5,10,20,50,100,150].forEach(f=>{const x=sx(Math.log10(f)); s+=`<line class="grid" x1="${x}" x2="${x}" y1="${T}" y2="${T+ph}"/><text class="tick" x="${x}" y="${T+ph+12}" text-anchor="middle">${f}</text>`;});
     const nt=4; for(let k=0;k<=nt;k++){const v=lo+pad+(hi-lo-2*pad)*k/nt; const y=sy(v); s+=`<line class="grid" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text class="tick" x="${L-4}" y="${y+3.5}" text-anchor="end">${v.toFixed(Math.abs(hi-lo)<0.1?3:2)}</text>`;}
     if(opts.zero) s+=`<line class="zero" x1="${L}" x2="${W-R}" y1="${sy(0)}" y2="${sy(0)}"/>`;
     series.forEach(sr=>{ if(sr.sem){const up=sr.y.map((v,i)=>`${sx(lx[i]).toFixed(1)},${sy(v+sr.sem[i]).toFixed(1)}`); const dn=sr.y.map((v,i)=>`${sx(lx[i]).toFixed(1)},${sy(v-sr.sem[i]).toFixed(1)}`).reverse(); s+=`<polygon points="${up.concat(dn).join(' ')}" fill="${sr.c}" fill-opacity="0.13" stroke="none"/>`;} });
