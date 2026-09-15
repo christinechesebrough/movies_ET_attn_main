@@ -750,7 +750,16 @@ Strictly ordered; each blocks the next.
   entries, so NS174_02 (238) and NS174_03 (239) will silently lose their extra
   windows on a positional join. Handle explicitly in B4.
 
-- [ ] **C0. FOOOF `aperiodic_mode` is misspecified — refit required.**
+- [x] **C0. FOOOF `aperiodic_mode` is misspecified — ABANDONED 2026-09-15.**
+  Christine dropped the full knee refit (`extract_fooof_knee.py`, two-pass
+  main/low, `rolling_fooof_knee`): it was never run and is no longer needed.
+  The knee-mode aperiodic fit is already provided by the light pipeline
+  (C0b, `rolling_fooof_light`, 71 recordings), which is the FOOOF source for
+  all downstream work. Not covered by light, and now consciously not pursued:
+  fitted Gaussian peak parameters, a delta band, and a 30 s low-frequency
+  pass. The script stays in the repo but is not a pipeline stage. The
+  measurement below still stands and still blocks any use of the June
+  fixed-mode outputs.
   Measured 2026-09-10 (`analysis_scripts/compare_fooof_aperiodic_mode.py`,
   10,000 fits): a knee sits inside the 1-57 Hz fit range in **95.1%** of
   windows (median 5.19 Hz), the fixed-mode exponent correlates only **0.46**
@@ -1201,6 +1210,19 @@ legacy directories. Scripts prefixed `attn_explore_14Sep26_`.
   DAN, VN, SMN; DMN / FPN / VAN / LN positive but weaker. Per-frequency FDR
   mostly not reached at 11-12 persons. Hungarian / Inscapes pending the
   windowing job. Time-resolved maps kept on the page as secondary.
+- [x] **I22. Internal region edge 0.8 -> 0.6 in entries 13 and 14 (Christine,
+  2026-09-15).** Reason: under the by-timepoint deviation the rise along
+  PC1 begins near 0.5 (entry 8 fine bins: +0.06/+0.10/+0.03 at 0.5-0.6,
+  +0.17/+0.28/+0.21 at 0.7-0.8), so 0.4-0.8 was not "ambiguous" in that
+  scheme. Regions now -1.5 | -0.4 | 0.4 | 0.6 | 1.2 for ALL three rows of
+  13 and 14 (state_profile.py EDGES); collapsed Internal = PC1_z >= 0.6.
+  Rerun: profile x3, contrasts3 x3, trend6 x3. Int-Ext significant (hyp /
+  other): pc1only Y17 33/22, Y7 23/7; gated Y17 31/31, Y7 26/9; gated_tp
+  Y17 34/23, Y7 23/10. Trends: Y17 61-69 (mostly rising), Y7 31-35. Same
+  picture as at 0.8. STILL AT 0.8: entry 9 (eye-side regions), FOOOF
+  companion page, spectra page EDGES (attn_explore_14Sep26_spectra_states.py)
+  - the spectra page TEXT on disk already says 0.6 (edited outside this
+  session?); its figures were built with 0.8. Reconcile.
   Running log for this track: `reports/attn_explore_14Sep26.html`
   (published artifact https://claude.ai/code/artifact/819b3762-7a83-47f9-b495-dde471173f35;
   republish the same file to update it). Entry 1 = feature generation +
@@ -1298,6 +1320,17 @@ know where anything lives. What is worth doing, cheapest first:
 
 ## H. Return to for paper reporting
 
+- [ ] **H10. Decide whether NS205 belongs in the other analyses (flagged
+  2026-09-15).** NS205 has an inscapes recording everywhere but its English
+  recording is absent from every neural output: the only preprocessed English
+  file is `sub-NS205_..._referenced_bip.fif` (bipolar), there is no cortical
+  referenced file, so the power and FOOOF extractors never picked it up
+  (`rolling_fooof_light` has NS205 inscapes only; H2 still waits on it).
+  Decide: (a) preprocess NS205 English with the cortical reference and add it
+  to `included_recordings.csv` and the FOOOF/power sets, or (b) keep NS205
+  inscapes-only and say so in the inclusion table. Related to the 7
+  eye-included / neural-excluded recordings in I19 and to H3.
+
 - [ ] **H1. Bootstrap CIs on PC1 congruence across movies.** Parked
   2026-09-10 (Christine: important, not now). `compare_pc1_across_movies.py`
   resamples recordings within each video (N_BOOT = 100, env-overridable),
@@ -1341,11 +1374,11 @@ know where anything lives. What is worth doing, cheapest first:
   Inscapes > English in theta periodic power (d = 0.50), theta peak presence
   (d = 0.52) and peaks fitted (d = 0.53), Holm p <= 0.018; theta CF omnibus
   p = 0.039. English and Hungarian never differ. Has_beta is 1.0 in every
-  recording (skipped). Re-run when NS205 lands and when the knee refit
-  (`rolling_fooof_knee`, not yet written) exists. Original spec follows.
-  Flagged 2026-09-10. Once the per-window aperiodic / periodic extraction
-  finishes (the knee-mode refit, C0 / C0b / extract_fooof_knee.py running
-  now), run the same `value ~ movie + (1 | person)` analysis used for the eye
+  recording (skipped). Re-run when NS205 lands. (The knee refit is
+  abandoned, C0; `rolling_fooof_light` is the final FOOOF source.) Original
+  spec follows.
+  Flagged 2026-09-10. On the per-window aperiodic / periodic extraction
+  (`rolling_fooof_light`, C0b), run the same `value ~ movie + (1 | person)` analysis used for the eye
   measures and band amplitude (`compare_eye_measures_across_movies.py`,
   `compare_power_across_movies.py` - the latter shows how to reuse
   `fit_measure` and the figure layout on a new table). Recording-level unit:

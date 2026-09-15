@@ -10,7 +10,7 @@ atlas, network, band, region), with the number of persons.
 
 Regions (within-viewer PC1 z, from log entry 9):
     far external < -1.5 | external -1.5..-0.4 | middle -0.4..0.4 |
-    ambiguous 0.4..0.8 | internal 0.8..1.2 | far internal > 1.2
+    ambiguous 0.4..0.6 | internal 0.6..1.2 | far internal > 1.2   (internal edge 0.6 since 2026-09-15)
 
 GATE (2026-09-15): with GATE = True the two internal regions additionally
 require deviation z > GATE_T (0.6) on GATE_INT_COL, and the two external
@@ -35,7 +35,7 @@ import compare_attn_states_lmm as L
 MOVIE_DATA = L.MOVIE_DATA
 LABELS = f'{MOVIE_DATA}/attention_labels_10s/attention_labels_10s_pooled_explore14Sep26.csv'
 OUT = f'{MOVIE_DATA}/attn_explore_14Sep26/state_profile'
-EDGES = [-np.inf, -1.5, -0.4, 0.4, 0.8, 1.2, np.inf]
+EDGES = [-np.inf, -1.5, -0.4, 0.4, 0.6, 1.2, np.inf]   # internal starts at 0.6 (Christine 2026-09-15; was 0.8): the by-timepoint deviation rises from ~0.5, see log entry 8
 REG = ['far external', 'external', 'middle', 'ambiguous', 'internal', 'far internal']
 ATLASES = ['Y17_Atlas_Region', 'Y7_Atlas_Region']
 GATE = False

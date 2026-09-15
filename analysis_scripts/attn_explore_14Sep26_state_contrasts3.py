@@ -4,7 +4,7 @@ Exploration track, step 6: three collapsed states and pairwise contrasts.
 Collapses the six PC1 regions of attn_explore_14Sep26_state_profile.py into
     External = far external + external      (PC1 z < -0.4)
     Middle   = middle + ambiguous            (-0.4 <= PC1 z < 0.8)
-    Internal = internal + far internal      (PC1 z >= 0.8)
+    Internal = internal + far internal      (PC1 z >= 0.6 since 2026-09-15; was 0.8)
 per contact (window-count-weighted), then for every (atlas, video, network,
 band) fits the three pairwise contrasts Internal-External, Internal-Middle,
 Middle-External with the pipeline's two-stage model: per-contact difference,
