@@ -51,7 +51,7 @@ GATE_EXT_COL, GATE_EXT_MAX = 'mahal_time_z', 0.0
 MIN_WIN, MIN_CONTACTS, MIN_PERSONS = 3, 5, 3
 MIN_REC = 5            # films with fewer windowed recordings than this are shown as pending
 BANDS = [('delta', 1, 3), ('theta', 4, 7), ('alpha', 8, 13), ('beta', 14, 30), ('gamma', 31, 50), ('HFA', 51, 150)]
-VLIM = 0.3
+VLIM = 0.12
 
 
 def stage2(d):
