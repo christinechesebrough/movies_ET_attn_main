@@ -1219,10 +1219,10 @@ legacy directories. Scripts prefixed `attn_explore_14Sep26_`.
   Rerun: profile x3, contrasts3 x3, trend6 x3. Int-Ext significant (hyp /
   other): pc1only Y17 33/22, Y7 23/7; gated Y17 31/31, Y7 26/9; gated_tp
   Y17 34/23, Y7 23/10. Trends: Y17 61-69 (mostly rising), Y7 31-35. Same
-  picture as at 0.8. STILL AT 0.8: entry 9 (eye-side regions), FOOOF
-  companion page, spectra page EDGES (attn_explore_14Sep26_spectra_states.py)
-  - the spectra page TEXT on disk already says 0.6 (edited outside this
-  session?); its figures were built with 0.8. Reconcile.
+  picture as at 0.8. The spectra page (attn_explore_14Sep26_spectra_states.py
+  EDGES, its text and PNGs) was moved to 0.6 and regenerated on disk at
+  12:20 by a parallel session; not yet committed or republished from here.
+  STILL AT 0.8: entry 9 (eye-side regions) and the FOOOF companion page.
   Running log for this track: `reports/attn_explore_14Sep26.html`
   (published artifact https://claude.ai/code/artifact/819b3762-7a83-47f9-b495-dde471173f35;
   republish the same file to update it). Entry 1 = feature generation +
