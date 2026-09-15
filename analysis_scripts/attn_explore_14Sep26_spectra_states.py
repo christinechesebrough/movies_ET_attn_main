@@ -135,7 +135,7 @@ if __name__ == '__main__':
             ax = axes[i, 0]
             if (net, vid) in H:
                 fe = np.r_[freqs - 1, freqs[-1] + 1]; im = ax.pcolormesh(np.arange(len(REG) + 1), fe, H[(net, vid)].T, cmap='RdBu_r', norm=TwoSlopeNorm(vcenter=0, vmin=-VLIM, vmax=VLIM), shading='flat', rasterized=True)
-                ax.set_yscale('log'); ax.set_ylim(1, 152); ax.set_yticks([2, 4, 8, 16, 32, 64, 128]); ax.set_yticklabels(['2', '4', '8', '16', '32', '64', '128']); ax.set_xticks(np.arange(len(REG)) + 0.5); ax.set_xticklabels([r.replace(' ', '\n') for r in REG], fontsize=7.5)
+                ax.set_yscale('log'); ax.set_ylim(1, 152); ax.set_yticks([2, 4, 8, 16, 32, 64, 150]); ax.set_yticklabels(['2', '4', '8', '16', '32', '64', '150']); ax.set_xticks(np.arange(len(REG)) + 0.5); ax.set_xticklabels([r.replace(' ', '\n') for r in REG], fontsize=7.5)
                 ax.set_title(f'{VN[vid]}: mean spectrum per state ({len(net_state[(net, vid)])} recordings)', fontsize=8.5); ax.set_ylabel('frequency (Hz)', fontsize=8)
             else:
                 ax.text(0.5, 0.5, 'windowed wavelets pending', ha='center', va='center', fontsize=9, color='#8a9391', transform=ax.transAxes); ax.set_title(VN[vid], fontsize=8.5); ax.set_xticks([]); ax.set_yticks([])
@@ -144,7 +144,7 @@ if __name__ == '__main__':
             if len(rr):
                 ax.fill_between(rr.freq, rr.est - rr.se, rr.est + rr.se, color='#5546b8', alpha=0.18, lw=0); ax.plot(rr.freq, rr.est, color='#5546b8', lw=1.6)
                 sg = rr[rr.sig]; ax.scatter(sg.freq, sg.est, s=14, color='#151b1a', zorder=3, label='FDR < 0.05')
-                ax.axhline(0, color='#c9d0ce', lw=0.8); ax.set_xscale('log'); ax.set_xticks([2, 4, 8, 16, 32, 64, 128]); ax.set_xticklabels(['2', '4', '8', '16', '32', '64', '128'])
+                ax.axhline(0, color='#c9d0ce', lw=0.8); ax.set_xscale('log'); ax.set_xticks([2, 4, 8, 16, 32, 64, 150]); ax.set_xticklabels(['2', '4', '8', '16', '32', '64', '150'])
                 for b, lo, hi in BANDS:
                     ax.axvspan(lo - 0.5, hi + 0.5, color='#eef1f0' if BANDS.index((b, lo, hi)) % 2 else 'white', zorder=0, lw=0); ax.text(np.sqrt(max(lo, 1) * hi), ax.get_ylim()[1] * 0.92 if ax.get_ylim()[1] > 0 else 0, b, ha='center', fontsize=7, color='#8a9391')
                 ax.set_title(f'Internal minus External, mixed-model estimate ± SE over contacts ({rr.n_contacts.iloc[0]} contacts, {rr.n_persons.iloc[0]} persons)', fontsize=8.5)
@@ -163,7 +163,7 @@ if __name__ == '__main__':
             M = rr.pivot(index='network', columns='freq', values='z').reindex(Y7); Sg = rr.pivot(index='network', columns='freq', values='sig').reindex(Y7)
             im = ax.pcolormesh(np.r_[freqs - 1, freqs[-1] + 1], np.arange(len(Y7) + 1), M.values, cmap='RdBu_r', norm=TwoSlopeNorm(vcenter=0, vmin=-5, vmax=5), shading='flat', rasterized=True)
             ys, xs = np.where(Sg.values == True); ax.scatter(freqs[xs], ys + 0.5, s=5, color='#151b1a')
-            ax.set_xscale('log'); ax.set_xticks([2, 4, 8, 16, 32, 64, 128]); ax.set_xticklabels(['2', '4', '8', '16', '32', '64', '128']); ax.set_yticks(np.arange(len(Y7)) + 0.5); ax.set_yticklabels([n.split(' (')[0] for n in Y7], fontsize=7)
+            ax.set_xscale('log'); ax.set_xticks([2, 4, 8, 16, 32, 64, 150]); ax.set_xticklabels(['2', '4', '8', '16', '32', '64', '150']); ax.set_yticks(np.arange(len(Y7)) + 0.5); ax.set_yticklabels([n.split(' (')[0] for n in Y7], fontsize=7)
             ax.set_title(f'{VN[vid]}: Internal minus External, z per frequency (dots FDR < 0.05)', fontsize=8.5); ax.set_xlabel('Hz', fontsize=8)
         else:
             ax.text(0.5, 0.5, 'pending', ha='center', va='center', color='#8a9391', transform=ax.transAxes); ax.set_title(VN[vid], fontsize=8.5); ax.set_xticks([]); ax.set_yticks([])
