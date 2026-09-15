@@ -29,8 +29,9 @@ Stage 1 (per recording, parallel by FOOOF_WORKER / FOOOF_N_WORKERS):
 Stage 2 (AGGREGATE = True, after every recording exists):
     per (atlas, video, network, state): mean and SEM across contacts of the
     absolute and relative curves, contact and person counts. Written at full
-    0.5 Hz resolution to spectra_by_state.npz and, decimated to 1 Hz for the
-    page, to spectra_by_state.json.
+    0.5 Hz resolution to spectra_by_state.npz and, on a log-spaced grid
+    (LOG_BINS_PER_DECADE, each contact binned before averaging), to
+    spectra_by_state.json for the page.
 
 No statistics are computed here - the tests on the scalar features are in the
 states script; these curves are what those features summarise.
@@ -63,6 +64,7 @@ STATES = S.REG + ['External', 'Middle', 'Internal', 'Internal2', 'External2', 'a
 PAGE_NETS = {'Y7': None,                          # None -> every network
              'Y17': S.HYP_NETS['Y17']}            # only the hypothesis networks in the JSON
 MIN_WIN = S.MIN_WIN
+LOG_BINS_PER_DECADE = 20      # page curves; the npz keeps the full 0.5 Hz grid
 
 
 def aperiodic_curve(freqs, offset, knee, exponent):
@@ -190,24 +192,42 @@ def aggregate():
                         abs_mean=np.stack([agg[k]['abs_mean'] for k in keys]), abs_sem=np.stack([agg[k]['abs_sem'] for k in keys]),
                         rel_mean=np.stack([agg[k]['rel_mean'] for k in keys]), rel_sem=np.stack([agg[k]['rel_sem'] for k in keys]),
                         n_contacts=np.array([agg[k]['n_contacts'] for k in keys]), n_persons=np.array([agg[k]['n_persons'] for k in keys]))
-    # ---- JSON for the page: 1 Hz bins (mean of adjacent 0.5 Hz bins), selected networks ----
-    def dec(v):
-        m = len(v) - len(v) % 2
-        return [round(float(x), 4) for x in v[:m].reshape(-1, 2).mean(1)]
-    fj = dec(fr)
-    J = {'freqs': fj, 'states': STATES, 'regions': S.REG, 'components': COMPONENTS, 'videos': L.VIDEOS, 'atlases': {}}
+    # ---- JSON for the page: LOG-SPACED bins, LOG_BINS_PER_DECADE, selected networks ----
+    # Each contact's curve is binned first (mean of the 0.5 Hz bins that fall in
+    # a log bin), then mean and SEM are taken across contacts, so the SEM band
+    # belongs to the plotted value. A 100 Hz bin thereby averages ~10x as many
+    # raw bins as a 10 Hz bin, which is what makes the high band readable: the
+    # Welch estimation noise is the same size at every frequency (~0.002 log10
+    # after averaging) while the state effect above 30 Hz is only ~0.005.
+    edges = 10 ** np.arange(np.log10(fr[0]), np.log10(fr[-1]) + 1e-9, 1.0 / LOG_BINS_PER_DECADE)
+    edges = np.append(edges, fr[-1] + 0.25)
+    which = np.digitize(fr, edges) - 1
+    bins = [np.flatnonzero(which == b) for b in range(len(edges) - 1)]
+    bins = [b for b in bins if b.size]                      # drop log bins narrower than the 0.5 Hz grid
+    fj = [round(float(10 ** np.log10(fr[b]).mean()), 3) for b in bins]   # geometric centre
+    def binned(arr):                                         # (N, 3, F) -> (N, 3, B)
+        return np.stack([arr[:, :, b].mean(axis=2) for b in bins], axis=2)
+    Ab, Rb = binned(A), binned(R)
+    def rnd(v):
+        return [round(float(x), 4) for x in v]
+    J = {'freqs': fj, 'bins_per_decade': LOG_BINS_PER_DECADE, 'states': STATES, 'regions': S.REG, 'components': COMPONENTS, 'videos': L.VIDEOS, 'atlases': {}}
     for atlas in S.ATLASES:
         want = PAGE_NETS[atlas]
         nets = ['all'] + (sorted(n for n in M[atlas].unique() if n not in L.EXCLUDE_REGIONS) if want is None else list(want))
         J['atlases'][atlas] = {'networks': nets, 'data': {}}
-        for (a_, vid, net, st), v in agg.items():
-            if a_ != atlas or net not in nets:
-                continue
-            J['atlases'][atlas]['data'][f'{vid}|{net}|{st}'] = {
-                'abs': [dec(v['abs_mean'][c]) for c in range(3)],
-                'rel': [dec(v['rel_mean'][c]) for c in range(3)],
-                'rel_sem': [dec(v['rel_sem'][c]) for c in range(3)],
-                'n': v['n_contacts'], 'np': v['n_persons']}
+        for vid in L.VIDEOS:
+            for net in nets:
+                sel = (M.video == vid) & ((M[atlas] == net) if net != 'all' else ~M[atlas].isin(L.EXCLUDE_REGIONS))
+                for st in STATES:
+                    idx = np.flatnonzero(sel & (M.state == st))
+                    if len(idx) < S.MIN_CONTACTS:
+                        continue
+                    a, rr = Ab[idx], Rb[idx]
+                    J['atlases'][atlas]['data'][f'{vid}|{net}|{st}'] = {
+                        'abs': [rnd(a.mean(0)[c]) for c in range(3)],
+                        'rel': [rnd(rr.mean(0)[c]) for c in range(3)],
+                        'rel_sem': [rnd((rr.std(0, ddof=1) / np.sqrt(len(idx)))[c]) for c in range(3)],
+                        'n': int(len(idx)), 'np': int(M.person.iloc[idx].nunique())}
     json.dump(J, open(f'{OUT}/spectra_by_state.json', 'w'), separators=(',', ':'))
     print(f'  -> {OUT}/spectra_by_state.json  {os.path.getsize(f"{OUT}/spectra_by_state.json")/1e6:.1f} MB', flush=True)
 
