@@ -1,0 +1,53 @@
+<title>Network Spectrograms by Gaze State</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{color-scheme:light;--ground:#f5f7f6;--panel:#ffffff;--ink:#151b1a;--ink-2:#55605e;--ink-3:#8a9391;--rule:#dfe4e2;--rule-2:#eef1f0;--accent:#1e6f69;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;--serif:"IBM Plex Serif",Georgia,"Times New Roman",serif;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--ground:#171a1a;--panel:#1f2323;--ink:#eef1f0;--ink-2:#b4bcba;--ink-3:#7f8886;--rule:#343a39;--rule-2:#2a2f2e;--accent:#63c4bc}}
+:root[data-theme="dark"]{color-scheme:dark;--ground:#171a1a;--panel:#1f2323;--ink:#eef1f0;--ink-2:#b4bcba;--ink-3:#7f8886;--rule:#343a39;--rule-2:#2a2f2e;--accent:#63c4bc}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--serif);font-size:17px;line-height:1.6;padding-block:48px 96px;padding-inline:clamp(16px,4vw,40px)}
+.wrap{max-width:1180px;margin:0 auto}
+header{max-width:720px;margin-bottom:36px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+h1{font-family:var(--sans);font-weight:600;font-size:clamp(28px,4vw,38px);line-height:1.15;margin:0 0 12px;text-wrap:balance;letter-spacing:-.01em}
+header p,.prose p{margin:0 0 16px;color:var(--ink)}
+.prose{max-width:720px}
+h2{font-family:var(--sans);font-weight:600;font-size:22px;margin:40px 0 8px;letter-spacing:-.01em}
+figure{margin:18px 0 0;background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 10px}
+figure img{width:100%;height:auto;display:block;background:#fff;border-radius:3px}
+figcaption{font-family:var(--sans);font-size:13.5px;color:var(--ink-2);margin-top:10px;max-width:760px;line-height:1.5}
+.note{max-width:720px;border-left:2px solid var(--accent);padding:2px 0 2px 16px;color:var(--ink-2);font-size:15.5px;margin:20px 0}
+.m{font-family:var(--mono);font-size:.86em;color:var(--ink-2)}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">attn_explore_14Sep26 · companion page</p>
+  <h1>Network Spectrograms by Gaze State</h1>
+  <p>Time-frequency maps of wavelet power for each Yeo-7 network, conditioned on the gaze states defined in the <a href="https://claude.ai/code/artifact/819b3762-7a83-47f9-b495-dde471173f35">Attention State Exploration Log</a>.</p>
+</header>
+
+<div class="prose">
+  <h2 style="margin-top:0">How the maps are made</h2>
+  <p>The source is the windowed Morlet wavelet power: for each contact, log<sub>10</sub> power at 76 frequencies from 1 to 151 Hz in 2 Hz steps, averaged within each 10 s window on the same grid as every other analysis in the track, 236 windows stepped every 2.5 s. Each contact and frequency is robust-z-scored against its own whole-recording median and MAD, so a value of +1 means one typical step above that contact's usual power at that frequency.</p>
+  <p>For each recording, the contacts belonging to a network are averaged to give one 76 by 236 map, and that recording's mean spectrum over all its good windows is subtracted, so a map shows departure from the recording's own average at each frequency. Windows flagged by the manual QC are removed. The map is then split by state: for the Internal panel only windows labelled Internal keep their values, and so on, and the panels are averaged across recordings. Where no viewer was in that state at a given window the column is blank. The fourth panel in each row collapses time: the mean spectrum of each state's windows per recording, then mean and standard error across recordings.</p>
+  <p>States are the two-state conj rule at 0.6 from the log: Internal is PC1 z above 0.6 with deviation z above 0.6; External is PC1 z between -1.5 and -0.6; Neutral is everything else except the far-external tail, which is excluded. Recordings are the pipeline's neural inclusion list. The maps are descriptive; no statistics are computed here.</p>
+  <p class="note">Coverage: windowed wavelets currently exist for 12 English recordings. Hungarian and Inscapes are being windowed from the continuous files and their rows read "pending" until that finishes, after which this page will be regenerated. Four English windowed files were found truncated and were removed to be rebuilt; they will be added at the same time.</p>
+</div>
+
+<h2>Visual network</h2>
+<figure><img src="spectrograms/visual_network_vn.png" alt="Visual network spectrograms by state"></figure>
+<h2>Somatomotor network</h2>
+<figure><img src="spectrograms/somatomotor_network_smn.png" alt="Somatomotor network spectrograms by state"></figure>
+<h2>Dorsal attention network</h2>
+<figure><img src="spectrograms/dorsal_attention_network_dan.png" alt="Dorsal attention network spectrograms by state"></figure>
+<h2>Ventral attention network</h2>
+<figure><img src="spectrograms/ventral_attention_network_van.png" alt="Ventral attention network spectrograms by state"></figure>
+<h2>Limbic network</h2>
+<figure><img src="spectrograms/limbic_network_ln.png" alt="Limbic network spectrograms by state"></figure>
+<h2>Frontoparietal network</h2>
+<figure><img src="spectrograms/frontoparietal_network_fpn.png" alt="Frontoparietal network spectrograms by state"></figure>
+<h2>Default mode network</h2>
+<figure><img src="spectrograms/default_mode_network_dmn.png" alt="Default mode network spectrograms by state"></figure>
+</div>

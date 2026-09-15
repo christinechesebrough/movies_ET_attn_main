@@ -7,7 +7,7 @@ Created on Mon Apr 21 18:55:15 2025
 
 """
 
-import os, re
+import os, re, sys
 from itertools import compress
 import glob
 
@@ -40,12 +40,24 @@ def pick_file(files, *, contains_any=None, contains_all=None, endswith=None, sta
 
 def extract_pat_id(entry: str) -> str:
     """
-    Extract patient ID like 'NS127' or 'NS127_02' from an entry string.
+    Extract patient ID like 'NS127', 'NS127_02' or 'LH010' from an entry string.
+
+    The NS-only pattern this used to carry silently excluded every LH patient
+    (LH010, LH012 are hungarian-only) with a ValueError.
     """
-    m = re.match(r'(NS\d+(?:_\d+)?)', entry)
+    m = re.match(r'((?:NS|LH)\d+(?:_\d+)?)', entry)
     if not m:
         raise ValueError(f"Could not extract patient ID from: {entry}")
     return m.group(1)
+
+
+def run_keys(run_label: str):
+    """
+    Both spellings a run label appears under in Eye_prep filenames:
+    'run-01' (english, inscapes) and 'run-1' (hungarian).
+    """
+    n = int(run_label.split('-')[-1])
+    return [f'run-{n:02d}', f'run-{n}']
 
 
 def extract_run_label(fname: str) -> str:
@@ -74,11 +86,72 @@ def sort_key(f):
 
 #%%
 
+machine_path = 'media/christine'   # as in the other scripts; was hardcoded /Volumes
+sys.path.append(f'/{machine_path}/Samsung/scripts/movies_ET_attn_main/src')   # Spyder-safe (no __file__)
+from eye_normalise import standardise_recording   # robust per-recording scale, defined once
 drive = 'Samsung'
 vid = "despicable_me_hungarian" #'dme' "inscapes"
 
 window_len = 10
 overlap = 7.5
+
+# NORM_SCHEME (2026-09-14) - how the windowed features are standardised.
+#   'legacy'          the original two-stage scheme: per-recording z of 8
+#                     features (pupil, ISC untouched), then across-movie z of
+#                     10 (ISC untouched). Removes each viewer's range as well
+#                     as their level, for 8 of 11 features. Output dir
+#                     6Apr26_norm_eye_features_by_rec_{win}s (unchanged).
+#   'centred_global'  stage 1 CENTRES only, all 11 features (level removed,
+#                     range kept); stage 2 scales every feature by its SD
+#                     across all recordings of the movie (one yardstick per
+#                     feature per movie). Preserves individual differences in
+#                     attentional range. Output dir ..._centred_global.
+#   'robust'          (2026-09-14) legacy structure with three stage-1 changes:
+#                     (a) the 8 gaze features are standardised per recording
+#                     as (x - median) / (1.4826 * MAD), SD fallback when the
+#                     MAD is 0, because the SD is tail-inflated in 11 (Vergence)
+#                     and 21 (Vergence_Std) of 53 recordings (SD up to 12x MAD);
+#                     (b) missing windows are filled AFTER standardisation, at
+#                     the recording median (0), instead of with a raw 0 before
+#                     it (which put no-saccade windows 1-4 SD below the mean in
+#                     Saccade_Dispersion); (c) windows with fewer than
+#                     GAZE_VALID_MIN valid gaze samples are treated as having
+#                     NO gaze information: all 8 gaze features are set missing
+#                     (-> 0) and the window is flagged by Gaze_Valid_Frac, so
+#                     downstream can exclude them. A window with valid gaze
+#                     but no saccades keeps a missing dispersion (-> 0);
+#                     Saccade_Rate = 0 carries that information.
+#                     Pupil is left alone in stage 1 (already rescaled per
+#                     individual upstream); ISC follows ISC_MODE. Stage 2 is
+#                     the legacy across-movie z. Output dir ..._robust.
+NORM_SCHEME = 'legacy'
+ISC_MODE = 'raw'        # 'raw'        ISC untouched (legacy; SD ~0.14 vs 1 for the
+                        #              z-scored features, so it barely enters the PCA)
+                        # 'within_rec' robust z per recording like the gaze features
+                        # (only used by NORM_SCHEME = 'robust')
+GAZE_VALID_MIN = 0.5    # 'robust' only: min fraction of finite gaze samples in a
+                        # 10 s window for its gaze features to count as observed
+# Vergence from MEASURED samples only (2026-09-14, 'robust' scheme). The vergence
+# file's gaze_dist_x_interp fills every sample where one or both eyes were
+# missing by linear interpolation; those fills produce runs of outlying
+# disparity up to ~3 s long (NS164 Hungarian: 76 % of outlying samples are
+# interpolated). Christine's rule: treat ONLY interpolated samples; a measured
+# value stands even when extreme. So interpolated samples (NaN in the raw
+# dva_gaze_disp_x column) are excluded from the window mean / SD, and a
+# window with fewer than VERG_MIN_MEASURED of its samples measured gets NaN
+# (-> recording median after standardisation). Verg_Valid_Frac records the
+# measured fraction per window. Legacy scheme: unchanged (interpolated
+# series, plain mean / SD).
+VERG_MEASURED_ONLY = True   # applies under NORM_SCHEME == 'robust' only
+VERG_MIN_MEASURED = 0.3     # min measured fraction of a window for a vergence value (~900 samples)
+VERG_MIN_REC_MEDIAN = 0.5   # if a recording's MEDIAN measured fraction is below this, vergence is
+                            # unmeasurable for that recording: all three vergence features are set
+                            # missing (-> recording median = 0, no vergence information) instead of
+                            # letting a mostly-median, bimodal series into the PCA. Measured
+                            # 2026-09-14: 5 of 53 recordings (NS190 r1, NS194, NS174_03 English;
+                            # NS155, NS210 Inscapes) at 0.5.
+ALL_FEATURES = ['Saccade_Rate', 'Vergence', 'Vergence_Std', 'Abs_Vergence', 'Saccade_Dispersion',
+                'Saccade_Dispersion_Std', 'Blink_Rate', 'Blink_Duration', 'Pupil_Avg', 'Pupil_Std', 'ISC']
 
 compute_measures = True
 #'despicable_me_english'  # inscapes
@@ -92,14 +165,15 @@ if 'normed_eye_df' in locals():
     del normed_eye_df
 
 region = 'all'
-data_dir = f'/Volumes/{drive}/Movie_data/movies_prep_standard'
-isc_dir = f'/Volumes/{drive}/Movie_data/data/isc'
-mne_data_dir = f'/Volumes/{drive}/Movie_data/movies_prep_standard'
-elec_dir = f'/Volumes/{drive}/Movie_data/data/electrode_localization'
-movie_subs_table = pd.read_csv('/Volumes/Samsung/anatomy/shared_correspondence/movie_subs_master_updated.csv')
+movie_data_dir = f'/{machine_path}/{drive}/Movie_data'
+data_dir = f'{movie_data_dir}/movies_prep_standard'
+isc_dir = f'{movie_data_dir}/data/isc'
+mne_data_dir = f'{movie_data_dir}/movies_prep_standard'
+elec_dir = f'{movie_data_dir}/data/electrode_localization'
+# movie_subs_master_updated.csv was loaded here but never used; it lives on the
+# Data drive (/{machine_path}/Data/anatomy/shared_correspondence/), not Samsung.
 
-#fig_dir = f'/Volumes/{drive}/Movie_data/6Apr26_norm_eye_features_by_rec_{window_len}s'
-fig_dir = f'/Volumes/{drive}/Movie_data/6Apr26_norm_eye_features_by_rec_{window_len}s'
+fig_dir = f'{movie_data_dir}/6Apr26_norm_eye_features_by_rec_{window_len}s' + ('' if NORM_SCHEME == 'legacy' else f'_{NORM_SCHEME}')
 
 if not os.path.exists(fig_dir):
     os.makedirs(fig_dir)
@@ -126,7 +200,9 @@ if vid == 'despicable_me_english':
   
 if vid == 'despicable_me_hungarian':
 
-   good_ET_runs = ['NS127_02_ses-02_run-01', 
+   good_ET_runs = ['LH010_ses-01_run-01',      # 92.9/92.8% gaze present; excluded before
+                                              # only by the NS-only patient regex
+                'NS127_02_ses-02_run-01', 
                 'NS135_ses-01_run-01',
         'NS136_ses-01_run-01', 'NS137_ses-01_run-01',
         'NS138_ses-01_run-01', 'NS140_ses-01_run-01',
@@ -166,20 +242,20 @@ fs_eye = 300
 # Load ISC data 
 if vid in ['dme', 'despicable_me_english']:
     if window_len == 5:
-        data = np.load('/Volumes/Samsung/Movie_data/ISC_despicable_me_english_5s_windows/despicable_me_english_isc_gaze_position_time_updated.npz')
+        data = np.load(f'{movie_data_dir}/ISC_despicable_me_english_5s_windows/despicable_me_english_isc_gaze_position_time_updated.npz')
     elif window_len == 10:
-        data = np.load('/Volumes/Samsung/Movie_data/ISC_despicable_me_english_30Dec25/ISC_despicable_me_english_30Dec25_despicable_me_english_isc_gaze_position.npz',allow_pickle = True)
+        data = np.load(f'{movie_data_dir}/ISC_despicable_me_english_30Dec25/ISC_despicable_me_english_30Dec25_despicable_me_english_isc_gaze_position.npz',allow_pickle = True)
 
 if vid in ['dmh', 'despicable_me_hungarian']:
     if window_len == 5:
-        data = np.load(f'/Volumes/Samsung/Movie_data/ISC_{vid}_5s_windows/{vid}_isc_gaze_position_time_updated.npz')
+        data = np.load(f'{movie_data_dir}/ISC_{vid}_5s_windows/{vid}_isc_gaze_position_time_updated.npz')
     elif window_len == 10:
-        data = np.load(f'/Volumes/Samsung/Movie_data/ISC_{vid}_10s_windows/{vid}_isc_gaze_position_time_updated.npz',allow_pickle = True)
+        data = np.load(f'{movie_data_dir}/ISC_{vid}_10s_windows/{vid}_isc_gaze_position_time_updated.npz',allow_pickle = True)
 if vid == 'inscapes':
     if window_len == 5:
-        data = np.load('/Volumes/Samsung/Movie_data/ISC_inscapes_5s_windows/inscapes_isc_gaze_position_time_updated.npz')
+        data = np.load(f'{movie_data_dir}/ISC_inscapes_5s_windows/inscapes_isc_gaze_position_time_updated.npz')
     elif window_len == 10:
-        data = np.load("/Volumes/Samsung/Movie_data/ISC_inscapes_30Dec25/ISC_inscapes_30Dec25_inscapes_isc_gaze_position.npz",allow_pickle = True)
+        data = np.load(f'{movie_data_dir}/ISC_inscapes_30Dec25/ISC_inscapes_30Dec25_inscapes_isc_gaze_position.npz',allow_pickle = True)
 
 
 if window_len == 10:
@@ -217,6 +293,8 @@ if compute_measures:
     all_subs_rolling_pupil = {}
     all_subs_rolling_pupil_std = {}
     all_subs_isc = {}  
+    all_subs_gaze_valid_frac = {}   # fraction of finite gaze samples per window
+    all_subs_verg_valid_frac = {}   # fraction of MEASURED (both eyes) disparity samples per window
         
     #
     all_subs_saccade_rates_std = {} 
@@ -258,16 +336,22 @@ if compute_measures:
             os.makedirs(fig_patient_dir)
             
         print('Loading data for patient {:s} ...'.format(pat))
-        if window_len == 5:
-            run_id = '{:s}_{:s}'.format(pat, run)
-        if window_len == 10:
-            if vid == 'despicable_me_english' or 'inscapes':
-                run_id = '{:s}_{:s}_{:s}'.format(pat,ses,run)
-            if vid == 'despicable_me_hungarian':
-                run_id = '{:s}_{:s}'.format(pat, run)
+        # ISC entry_ids differ by video: english/inscapes carry the session
+        # ('NS127_02_ses-02_run-01'), hungarian does not ('NS127_02_run-01').
+        # The previous test `vid == 'despicable_me_english' or 'inscapes'` was
+        # always True and only worked because the hungarian branch overrode it.
+        if window_len == 5 or vid == 'despicable_me_hungarian':
+            run_id = f'{pat}_{run}'
+        else:
+            run_id = f'{pat}_{ses}_{run}'
 
-        idx_rec = np.in1d(entry_id_isc,run_id)
+        idx_rec = np.in1d(entry_id_isc, run_id)
         match_idx = np.where(idx_rec)[0]
+        if len(match_idx) == 0:
+            raise KeyError(
+                f"{run_id} not found in ISC entry_ids for {vid}; "
+                f"examples: {list(entry_id_isc[:5])}"
+            )
         isc_rec = isc_time[idx_rec]
         
         mean_isc = float(np.mean(isc_rec))
@@ -309,7 +393,7 @@ if compute_measures:
         
         if len(npz_candidates) > 1:
             # 1) Try run-* style filenames first
-            npz_candidates = [f for f in npz_candidates if run in f]
+            npz_candidates = [f for f in npz_candidates if any(k in f for k in run_keys(run))]
         
         npz_candidates = sorted(npz_candidates)
 
@@ -329,7 +413,7 @@ if compute_measures:
         
         if len(verg_candidates) > 1:
             # 1) Try run-* style filenames first
-            verg_candidates = [f for f in verg_candidates if run in f]
+            verg_candidates = [f for f in verg_candidates if any(k in f for k in run_keys(run))]
         
         # Make deterministic
         verg_candidates = sorted(verg_candidates)
@@ -351,7 +435,7 @@ if compute_measures:
             if any(k in f for k in keys)
         ]
         if len(blink_candidates)>1:
-            blink_candidates = [f for f in blink_candidates if run in f]
+            blink_candidates = [f for f in blink_candidates if any(k in f for k in run_keys(run))]
         
         if not blink_candidates:
             raise FileNotFoundError(f"No blink_events.csv found for {pat=} {vid=} in {eye_pat_dir}")
@@ -393,6 +477,7 @@ if compute_measures:
 
 
         vergence = verg_dat['gaze_dist_x_interp']#['dva_gaze_disp_x_interp']
+        verg_measured = np.isfinite(verg_dat['dva_gaze_disp_x'].values)   # False where the sample was interpolated
         t_verg = verg_dat['time'].values      
         
         mean_vergence = float(np.mean(vergence))
@@ -444,6 +529,7 @@ if compute_measures:
         
         #truncating vergence accordingly
         vergence = vergence[idx_vid]
+        verg_measured = verg_measured[idx_vid]
         
         # this step makes the first value of t_verg (vergence timing) 0
         t_verg = t_verg - t_verg[0]
@@ -490,6 +576,7 @@ if compute_measures:
         # Initialize array for sliding averages and variation
         verg_sliding = np.zeros(num_steps)
         verg_sliding_std = np.zeros(num_steps)  # Rolling variation of vergence rate (standard deviation)
+        verg_valid_frac = np.full(num_steps, np.nan)   # measured (both-eyes-valid) fraction per window
     
         # Time array for sliding window midpoints (aligned to time_isc)
         isc_aligned_time = np.arange(window_samples / 2, len(vergence) - window_samples / 2 + 1, step_size_samples) / 300  # Convert to seconds
@@ -500,15 +587,28 @@ if compute_measures:
             window_end_idx = int(window_start_idx + window_samples)  # Ensure integer index
         
             # Extract data within the current window
-            window_data = vergence[window_start_idx:window_end_idx]
-        
-            # Calculate mean vergence within the window
-            verg_sliding[i] = np.mean(window_data)
-           
-            # Calculate variation (standard deviation) within the window
-            verg_sliding_std[i] = np.std(window_data)
+            window_data = np.asarray(vergence[window_start_idx:window_end_idx], dtype=float)
+            meas = verg_measured[window_start_idx:window_end_idx]
+            verg_valid_frac[i] = meas.mean() if len(meas) else np.nan
+
+            if NORM_SCHEME == 'robust' and VERG_MEASURED_ONLY:
+                # measured samples only; too few measured -> NaN (filled at the
+                # recording median after standardisation)
+                if verg_valid_frac[i] >= VERG_MIN_MEASURED and meas.sum() > 1:
+                    verg_sliding[i] = np.nanmean(window_data[meas])
+                    verg_sliding_std[i] = np.nanstd(window_data[meas])
+                else:
+                    verg_sliding[i] = np.nan
+                    verg_sliding_std[i] = np.nan
+            else:
+                # legacy: interpolated series, plain mean / SD
+                verg_sliding[i] = np.mean(window_data)
+                verg_sliding_std[i] = np.std(window_data)
     
         abs_sliding_vergence = np.abs(verg_sliding)
+        if NORM_SCHEME == 'robust' and VERG_MEASURED_ONLY:
+            print(f"Vergence: {int(np.sum(~np.isfinite(verg_sliding)))} windows below VERG_MIN_MEASURED "
+                  f"(median measured fraction {np.nanmedian(verg_valid_frac):.3f})")
         
         # --- Force window-level outputs to exactly 236 samples (for downstream alignment) ---
         if window_len == 10:
@@ -540,6 +640,7 @@ if compute_measures:
                 # Remove only the final extra window
                 verg_sliding = verg_sliding[:-1]
                 verg_sliding_std = verg_sliding_std[:-1]
+                verg_valid_frac = verg_valid_frac[:-1]
                 isc_aligned_time = isc_aligned_time[:-1]
         
             elif num_steps > target_steps:
@@ -554,6 +655,7 @@ if compute_measures:
         
                 verg_sliding = np.interp(x_new, x_old, verg_sliding)
                 verg_sliding_std = np.interp(x_new, x_old, verg_sliding_std)
+                verg_valid_frac = np.interp(x_new, x_old, verg_valid_frac)
                 isc_aligned_time = np.interp(x_new, x_old, isc_aligned_time)
         
             abs_sliding_vergence = np.abs(verg_sliding)
@@ -601,6 +703,23 @@ if compute_measures:
         
             # Calculate mean vergence within the window
             saccade_rate_sliding[i] = np.sum(saccade_onset_int[window_start_idx:window_end_idx])
+
+        # Fraction of gaze samples in each window with a finite position: the
+        # per-window record of whether the tracker saw the eye at all. Written
+        # out as Gaze_Valid_Frac; NORM_SCHEME = 'robust' uses it to tell a
+        # window with NO gaze data from one with gaze but no saccades.
+        xy_arr = np.asarray(xy, dtype=float)
+        gaze_ok = np.isfinite(xy_arr).all(axis=1) if xy_arr.ndim == 2 else np.isfinite(xy_arr)
+        gaze_valid_frac = np.full(num_steps, np.nan)
+        for i in range(num_steps):
+            window_start_idx = int(i * step_size_samples)
+            window_end_idx = int(window_start_idx + window_samples)
+            seg = gaze_ok[window_start_idx:window_end_idx]
+            if len(seg):
+                gaze_valid_frac[i] = float(np.mean(seg))
+        all_subs_gaze_valid_frac[rec] = gaze_valid_frac
+        print(f"Gaze valid fraction: median {np.nanmedian(gaze_valid_frac):.3f}, "
+              f"{int(np.sum(gaze_valid_frac < GAZE_VALID_MIN))} windows below {GAZE_VALID_MIN}")
     
         # Verify alignment
         print(f"Length of saccade_rate_sliding: {len(saccade_rate_sliding)}")    
@@ -753,60 +872,47 @@ if compute_measures:
         
         
        ############# Calculate average pupil size and pupil size variance over the same rolling windows ##########
-       # time stamps of t_pupil are not the same clock or sampling rate as
-       # t, but that the timeseries reflects the same time period as the
-       # previous time series (e.g. vergence, saccade rate, etc.)
-           
-        # Sampling rate for pupil data
-        fs_pupil = len(pupil) / (t_end - t_start)
-        
-        # Determine the overlapping time range
-        t_common_start = max(t[0], t_pupil[0])
-        t_common_end = min(t[-1], t_pupil[-1])
-        
-        # Target number of steps (matching isc_aligned_time)
-        target_num_steps = len(isc_rec_t)
-        
-        # Calculate total duration of the pupil data in samples
-        total_samples = len(pupil)
-        
-        # Compute window and step sizes to achieve the target number of steps
-        step_size_samples_pupil = total_samples / (target_num_steps + 1)  # Approximate step size
-        window_samples_pupil = 2 * step_size_samples_pupil  # Ensure overlap of ~50%
-        
-        # Convert to integers
-        step_size_samples_pupil = int(step_size_samples_pupil)
-        window_samples_pupil = int(window_samples_pupil)
-        
-        # Recalculate the number of steps to ensure alignment
-        num_steps_pupil = target_steps
-        
-        # Initialize arrays for rolling metrics
-        rolling_pupil_avg = np.zeros(num_steps_pupil)
-        rolling_pupil_std = np.zeros(num_steps_pupil)
-        
-        # Loop through rolling windows
-        for i in range(num_steps_pupil):
-            window_start_idx = int(i * step_size_samples_pupil)
-            window_end_idx = int(window_start_idx + window_samples_pupil)
-            
-            # Ensure the window does not exceed the data length
-            if window_end_idx > total_samples:
-                window_end_idx = total_samples
-            
-            # Calculate mean pupil dilation within the window
-            rolling_pupil_avg[i] = np.mean(pupil[window_start_idx:window_end_idx])
-            
-            # Calculate pupil variation during the window
-            rolling_pupil_std[i] = np.std(pupil[window_start_idx:window_end_idx])
-    
-    
+        # t_pupil is on a different clock and sampling rate from t (gaze), but
+        # both were zeroed at t_start above, so a window defined in SECONDS is
+        # the same window on either series. Every other feature uses window i
+        # = [i * step_sec, i * step_sec + window_len); do the same here.
+        #
+        # Previously pupil used its own grid (step = n_samples / 237, window =
+        # 2 x step, ~50% overlap), so Pupil_Avg / Pupil_Std did not describe
+        # the same 10 s the other columns in the row describe.
+
+        step_sec = window_len - overlap
+
+        rolling_pupil_avg = np.full(num_steps, np.nan)
+        rolling_pupil_std = np.full(num_steps, np.nan)
+
+        t_pupil = np.asarray(t_pupil, dtype=float)
+        pupil = np.asarray(pupil, dtype=float)
+
+        for i in range(num_steps):
+            w0 = i * step_sec
+            w1 = w0 + window_len
+            j0 = np.searchsorted(t_pupil, w0, side='left')
+            j1 = np.searchsorted(t_pupil, w1, side='left')
+            if j1 > j0:
+                seg = pupil[j0:j1]
+                rolling_pupil_avg[i] = np.nanmean(seg)
+                rolling_pupil_std[i] = np.nanstd(seg)
+
+        n_empty = int(np.isnan(rolling_pupil_avg).sum())
+        if n_empty:
+            print(f"WARNING: {n_empty} pupil windows had no samples for {rec}")
+
+        print(f"Length of rolling pupil avg: {len(rolling_pupil_avg)}")
+
+
         #### COMBINE ALL DATA ###
         
         all_subs_saccade_rates[rec] = saccade_rate_sliding  # Store the saccade rates
         all_subs_sliding_vergence[rec] = verg_sliding  # Store vergence rates
         all_subs_vergence_std[rec] = verg_sliding_std
         all_subs_abs_vergence[rec] = abs_sliding_vergence
+        all_subs_verg_valid_frac[rec] = verg_valid_frac
         all_subs_saccade_dispersion[rec] = rolling_dispersion
         all_subs_saccade_dispersion_std[rec] = rolling_dispersion_std
         all_subs_blink_rate[rec] = rolling_blink_rate
@@ -822,8 +928,8 @@ if compute_measures:
         all_subs_mean_vergence[rec] = mean_vergence
         all_subs_sum_abs_vergence[rec] = sum_abs_vergence
         all_subs_mean_abs_vergence[rec] = mean_abs_vergence
-        all_subs_sum_sacc_distance[rec] = mean_sacc_distance
-        all_subs_mean_sacc_distance[rec] = sum_sacc_distance
+        all_subs_sum_sacc_distance[rec] = sum_sacc_distance
+        all_subs_mean_sacc_distance[rec] = mean_sacc_distance
         all_subs_std_sacc_distance[rec] = std_sacc_distance
         all_subs_med_pupil_dilation[rec] = med_pupil
         all_subs_pupil_variability[rec]= var_dp
@@ -843,6 +949,8 @@ if compute_measures:
         'Pupil_Avg': all_subs_rolling_pupil[rec],
         'Pupil_Std': all_subs_rolling_pupil_std[rec],
         'ISC': all_subs_isc[rec],
+        'Gaze_Valid_Frac': all_subs_gaze_valid_frac[rec],
+        'Verg_Valid_Frac': all_subs_verg_valid_frac[rec],
         }
     
         for name, v in vectors.items():
@@ -868,6 +976,8 @@ if compute_measures:
             'Pupil_Avg': all_subs_rolling_pupil[rec],
             'Pupil_Std': all_subs_rolling_pupil_std[rec],
             'ISC': all_subs_isc[rec],
+            'Gaze_Valid_Frac': all_subs_gaze_valid_frac[rec],
+            'Verg_Valid_Frac': all_subs_verg_valid_frac[rec],
         })
         
         # Save the Patient-Level DataFrame to a CSV file
@@ -915,7 +1025,26 @@ if compute_measures:
 
 #%
         # Normalize and replace NaNs with 0s
-        for col in columns_to_normalize:
+        if NORM_SCHEME == 'centred_global':
+            # stage 1: centre only, ALL features; a missing window becomes
+            # "at this viewer's average" (0 after centring), not raw zero
+            for col in ALL_FEATURES:
+                rec_data[col] = rec_data[col] - rec_data[col].mean(skipna=True)
+                rec_data[col] = rec_data[col].fillna(0)
+        elif NORM_SCHEME == 'robust':
+            # stage 1: robust z per recording; see the NORM_SCHEME comment.
+            no_gaze = rec_data['Gaze_Valid_Frac'] < GAZE_VALID_MIN
+            rec_data.loc[no_gaze, columns_to_normalize] = np.nan
+            if VERG_MEASURED_ONLY and rec_data['Verg_Valid_Frac'].median() < VERG_MIN_REC_MEDIAN:
+                rec_data[['Vergence', 'Vergence_Std', 'Abs_Vergence']] = np.nan
+                print(f"  {rec}: median measured vergence fraction {rec_data['Verg_Valid_Frac'].median():.2f} "
+                      f"< VERG_MIN_REC_MEDIAN -> vergence features set missing for the whole recording")
+            robust_cols = columns_to_normalize + (['ISC'] if ISC_MODE == 'within_rec' else [])
+            rec_data = standardise_recording(rec_data, robust_cols, scheme='robust', verbose_name=rec)
+            print(f"  {rec}: {int(no_gaze.sum())} windows below GAZE_VALID_MIN set to missing; "
+                  f"{int(rec_data[columns_to_normalize].eq(0).all(axis=1).sum())} windows at 0 on all gaze features")
+        else:
+          for col in columns_to_normalize:
             if col in rec_data.columns:
                 # Replace NaNs with 0 before normalization
                 rec_data[col] = rec_data[col].fillna(0)
@@ -979,9 +1108,18 @@ if compute_measures:
     normed_eye_df = final_eye_df.copy()
     
     # Normalize the entire dataset
-    normed_eye_df[columns_to_normalize] = (normed_eye_df[columns_to_normalize] - 
-                                         normed_eye_df[columns_to_normalize].mean()) / \
-                                        normed_eye_df[columns_to_normalize].std()
+    if NORM_SCHEME == 'centred_global':
+        # stage 2: one scale per feature per movie, ALL features incl. ISC;
+        # no re-centring (recordings are already centred), so each viewer's
+        # range is preserved relative to the movie-typical fluctuation
+        normed_eye_df[ALL_FEATURES] = normed_eye_df[ALL_FEATURES] / normed_eye_df[ALL_FEATURES].std()
+    else:
+        # legacy and robust: z across the movie for the 10 (ISC untouched).
+        # After stage 1 this is near-identity for the standardised features
+        # and only matters for pupil.
+        normed_eye_df[columns_to_normalize] = (normed_eye_df[columns_to_normalize] - 
+                                             normed_eye_df[columns_to_normalize].mean()) / \
+                                            normed_eye_df[columns_to_normalize].std()
     
     # Save the DataFrame to a CSV file
     normed_feature_filename = os.path.join(fig_dir, f'many_normed_et_features_for_pca_{vid}.csv')

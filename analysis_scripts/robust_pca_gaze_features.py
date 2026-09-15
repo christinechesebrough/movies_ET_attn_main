@@ -30,7 +30,8 @@ from sklearn.decomposition import FactorAnalysis
 #from factor_analyzer import FactorAnalyzer
 from sklearn.metrics.pairwise import cosine_similarity
 import sys
-sys.path.append('/Volumes/Samsung/scripts')  # Add this at top of your script
+machine_path = 'media/christine'   # as in the other scripts; was hardcoded /Volumes
+sys.path.append(f'/{machine_path}/Samsung/scripts')   # r_pca lives here
 
 from r_pca import R_pca
 
@@ -59,14 +60,16 @@ if 'final_eye_df' in locals():
 if 'normed_eye_df' in locals():
     del normed_eye_df
     
-data_dir = f'/Volumes/{drive}/Movie_data/movies_prep_standard'
-isc_dir = f'/Volumes/{drive}/Movie_data/data/isc'
-mne_data_dir = f'/Volumes/{drive}/Movie_data/movies_prep_standard'
-elec_dir = f'/Volumes/{drive}/Movie_data/data/electrode_localization'
-movie_subs_table = pd.read_csv('/Volumes/Samsung/anatomy/shared_correspondence/movie_subs_master_updated.csv')
+movie_data_dir = f'/{machine_path}/{drive}/Movie_data'
+data_dir = f'{movie_data_dir}/movies_prep_standard'
+isc_dir = f'{movie_data_dir}/data/isc'
+mne_data_dir = f'{movie_data_dir}/movies_prep_standard'
+elec_dir = f'{movie_data_dir}/data/electrode_localization'
+# anatomy is on the Data drive, not Samsung (see CLAUDE.md, TODO A7)
+movie_subs_table = pd.read_csv(f'/{machine_path}/Data/anatomy/shared_correspondence/movie_subs_master_updated.csv')
 
-#fig_dir = '/Volumes/Samsung/Movie_data/4Jan26_compute_norm_eye_features_by_rec'
-fig_dir = f'/Volumes/Samsung/Movie_data/6Apr26_norm_eye_features_by_rec_{window_len}s'
+NORM_SCHEME = 'legacy'        # 'legacy' | 'robust' | 'centred_global'  (compute_norm_eye_features_4Jan26.py)
+fig_dir = f'{movie_data_dir}/6Apr26_norm_eye_features_by_rec_{window_len}s' + ('' if NORM_SCHEME == 'legacy' else f'_{NORM_SCHEME}')
 if not os.path.exists(fig_dir):
     os.makedirs(fig_dir)
 
@@ -239,7 +242,10 @@ else:
             'NS174_02_ses-02_run-01',
             'NS174_03_ses-03_run-01',
             'NS178_ses-01_run-01',
-            'NS190_ses-01_run-02',
+            # 'NS190_ses-01_run-02',   # EXCLUDED 2026-09-10: mean gaze disparity
+                                       # sign-flipped and ~10x typical (calibration /
+                                       # eye-swap artefact, not behaviour); no wavelet
+                                       # for either run. See TODO A5 outlier log.
             'NS191_ses-01_run-01',
             'NS193_ses-01_run-02',
             'NS194_ses-01_run-01',
