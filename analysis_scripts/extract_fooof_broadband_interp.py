@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Broadband (1-140 Hz) aperiodic + per-band oscillation presence, one row per
+Broadband (1-150 Hz) aperiodic + per-band oscillation presence, one row per
 channel x window, with the notch-filter dips INTERPOLATED out of the spectrum
 before fitting.
 
 A copy of `extract_fooof_light.py` (same windows, same light peak budget, same
 flattened-spectrum band readout) with two changes:
 
-    1. the fit range is broadband, FIT_LO-FIT_HI = 1-140 Hz, instead of 1-57
+    1. the fit range is broadband, FIT_LO-FIT_HI = 1-150 Hz, instead of 1-57
     2. the line-noise notches inside that range are located per recording and
        interpolated before the fit
 
@@ -49,11 +49,16 @@ WHERE THE NOTCH LIST COMES FROM - THE DATA, NOT THE CODE
     fit CSV, and compared against EXPECTED_NOTCHES at run time. A mismatch is
     printed, not fatal - the data are authoritative.
 
-WHY FIT_HI = 140, NOT 150
+WHY FIT_HI = 150 IS SAFE (measured 2026-09-15)
 
-    The preprocessing low-pass is 170 Hz. With MNE's default transition band
-    (0.25 * h_freq = 42.5 Hz, centred on the cutoff) attenuation begins near
-    149 Hz. A 1-150 Hz fit brushes the filter edge; 140 leaves ~9 Hz clear.
+    The preprocessing low-pass is 170 Hz, and on paper MNE's default
+    transition band (0.25 * h_freq) would start attenuating near 149 Hz. It
+    does not show in the data: on NS127_02 / NS135 / NS151 / NS174_03
+    (english and inscapes) the channel-median spectrum stays within
+    +/- 0.06 log10 of its own 90-135 Hz log-log trend at every bin from 140
+    to 170 Hz. The first real feature above the fit range is the 180 Hz
+    notch. So the fit runs to 150 Hz; the PSD is computed to FIT_HI +
+    PSD_PAD_HZ so a notch near the ceiling still has a right-hand buffer.
 
 PEAK BUDGET
 
@@ -110,8 +115,17 @@ from channel_metadata import load_channel_metadata     # noqa: E402
 # =============================================================================
 # CONFIG
 # =============================================================================
-vids = ['despicable_me_english']
-PATIENTS = ['NS127_02', 'NS151', 'NS174_03']   # None -> every patient
+vids = ['despicable_me_english', 'despicable_me_hungarian', 'inscapes']
+PATIENTS = None               # hand list of patients; None -> INCLUSION_FILES
+# Recording set = union of the neural inclusion list (42, what every
+# attention-state contrast reads) and the eye/label set (49, what has
+# attention labels). Matched on (video, patient, run). Recordings in these
+# files with no `avg`-referenced .fif are printed and skipped (NS140_02
+# english, 2026-09-15). Set to () to run every recording in PREP_DIR.
+INCLUSION_FILES = (
+    ('descriptives_power_10s/included_recordings.csv', 'patient'),
+    ('attention_labels_10s/attention_labels_10s_pooled.csv', 'pat'),
+)
 REF = 'avg'
 OVERWRITE = False
 
@@ -119,7 +133,7 @@ WINDOW_SEC = 10.0
 STEP_SEC = 2.5                # matches the Tier 2 window grid
 N_FFT_SEC = 2.0               # 0.5 Hz resolution, ~9 Welch segments
 
-FIT_LO, FIT_HI = 1.0, 140.0
+FIT_LO, FIT_HI = 1.0, 150.0
 APERIODIC_MODE = 'knee'
 MAX_N_PEAKS = 8
 PEAK_WIDTH_LIMITS = [1, 10]
@@ -152,7 +166,7 @@ EXPECTED_NOTCHES = {
 # definition so the two are comparable; HFA is the new broadband band.
 BANDS = {'theta': (3.5, 7.5), 'alpha': (7.5, 13.5),
          'beta': (13.5, 30.5), 'gamma': (30.5, 57.0),
-         'hfa': (57.0, 140.0)}
+         'hfa': (57.0, 150.0)}
 
 PRESENCE_THRESHOLD = 0.20
 
@@ -193,6 +207,27 @@ def list_recordings(vid_list=None, prep_dir=PREP_DIR, ref=REF, patients=None):
                         and not f.startswith('._')):
                     out.append((vid, pat, os.path.join(nd, f)))
     return out
+
+
+def load_inclusion(files=INCLUSION_FILES, root=MOVIE_DATA):
+    """Set of (video, patient, run-label) from the union of the inclusion files."""
+    keep = set()
+    for rel, pat_col in files:
+        df = pd.read_csv(p(root, rel), usecols=['video', pat_col, 'run']).drop_duplicates()
+        keep |= set(zip(df['video'], df[pat_col], df['run']))
+    return keep
+
+
+def select_recordings(recs, keep):
+    """Filter list_recordings() output to `keep`; report members with no file."""
+    have = {(vid, pat, _run_label(os.path.basename(fp))): (vid, pat, fp)
+            for vid, pat, fp in recs}
+    missing = sorted(k for k in keep if k not in have)
+    if missing:
+        print('inclusion entries with no matching .fif (skipped):', flush=True)
+        for k in missing:
+            print('   ', k, flush=True)
+    return [have[k] for k in sorted(keep) if k in have]
 
 
 def load_lfp(pat, fif_path):
@@ -403,6 +438,8 @@ def fit_window(psd_ch, freqs, bands=BANDS):
 if __name__ == '__main__':
 
     recs = list_recordings(patients=PATIENTS)
+    if PATIENTS is None and INCLUSION_FILES:
+        recs = select_recordings(recs, load_inclusion())
     if N_WORKERS > 1:
         recs = [r for i, r in enumerate(recs) if i % N_WORKERS == WORKER]
     tag = f'[w{WORKER}/{N_WORKERS}] ' if N_WORKERS > 1 else ''
