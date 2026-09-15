@@ -25,11 +25,39 @@ figcaption{font-family:var(--sans);font-size:13.5px;color:var(--ink-2);margin-to
 <header>
   <p class="eyebrow">attn_explore_14Sep26 · companion page</p>
   <h1>Network Spectrograms by Gaze State</h1>
-  <p>Time-frequency maps of wavelet power for each Yeo-7 network, conditioned on the gaze states defined in the <a href="https://claude.ai/code/artifact/819b3762-7a83-47f9-b495-dde471173f35">Attention State Exploration Log</a>.</p>
+  <p>Wavelet power spectra for each Yeo-7 network by gaze state, and the Internal minus External contrast by frequency, using the states defined in the <a href="https://claude.ai/code/artifact/819b3762-7a83-47f9-b495-dde471173f35">Attention State Exploration Log</a>.</p>
 </header>
 
 <div class="prose">
-  <h2 style="margin-top:0">How the maps are made</h2>
+  <h2 style="margin-top:0">State-averaged spectra and the Internal minus External contrast</h2>
+  <p>This is the default view. Time is collapsed: for each network the left panel is a heatmap of the mean spectrum in each of the six gaze states, frequency on the y axis and state on the x axis from far external to far internal, and the right panel is the Internal minus External contrast at every frequency, where Internal pools the internal and far-internal regions and External pools the external and far-external regions. The summary figure below it shows the same contrast for all seven networks at once.</p>
+  <p>States are the six PC1 regions, cut on within-viewer PC1 z at -1.5, -0.4, 0.4, 0.8 and 1.2, with the by-timepoint deviation gate at both ends: the two internal regions keep only windows whose deviation z across viewers at that scene is above 0.6, and the two external regions keep only windows at or below 0. Windows failing a gate are dropped. Each contact's spectrum is robust-z-scored against its own recording and centred on its own mean over all good windows, so the heatmap shows departure from the contact's average at each frequency, averaged over the network's contacts and then over recordings. The contrast is a mixed model per frequency on the per-contact Internal minus External difference with a person random intercept; dots mark frequencies significant after FDR over the 76 frequencies within network and film.</p>
+  <p class="note">A film is drawn only once at least five of its recordings have windowed wavelets. English has 12. Hungarian and Inscapes are being windowed and will appear when the job finishes.</p>
+</div>
+<h2>All networks: Internal minus External by frequency</h2>
+<figure><img src="spectrograms/spectra_summary.png" alt="Internal minus External z by frequency for all networks"></figure>
+<h2>Visual network</h2>
+<figure><img src="spectrograms/spectra_visual_network_vn.png" alt="Visual network state spectra"></figure>
+<h2>Somatomotor network</h2>
+<figure><img src="spectrograms/spectra_somatomotor_network_smn.png" alt="Somatomotor network state spectra"></figure>
+<h2>Dorsal attention network</h2>
+<figure><img src="spectrograms/spectra_dorsal_attention_network_dan.png" alt="Dorsal attention network state spectra"></figure>
+<h2>Ventral attention network</h2>
+<figure><img src="spectrograms/spectra_ventral_attention_network_van.png" alt="Ventral attention network state spectra"></figure>
+<h2>Limbic network</h2>
+<figure><img src="spectrograms/spectra_limbic_network_ln.png" alt="Limbic network state spectra"></figure>
+<h2>Frontoparietal network</h2>
+<figure><img src="spectrograms/spectra_frontoparietal_network_fpn.png" alt="Frontoparietal network state spectra"></figure>
+<h2>Default mode network</h2>
+<figure><img src="spectrograms/spectra_default_mode_network_dmn.png" alt="Default mode network state spectra"></figure>
+
+<div class="prose">
+  <h2>Time-resolved maps (secondary)</h2>
+  <p>The earlier time-resolved version, kept for reference: the same wavelet power, but laid out along the film with the map masked to the windows each viewer spent in the Internal, External or Neutral state of the two-state conj rule at 0.6.</p>
+</div>
+
+<div class="prose">
+  <h2>How the time-resolved maps are made</h2>
   <p>The source is the windowed Morlet wavelet power: for each contact, log<sub>10</sub> power at 76 frequencies from 1 to 151 Hz in 2 Hz steps, averaged within each 10 s window on the same grid as every other analysis in the track, 236 windows stepped every 2.5 s. Each contact and frequency is robust-z-scored against its own whole-recording median and MAD, so a value of +1 means one typical step above that contact's usual power at that frequency.</p>
   <p>For each recording, the contacts belonging to a network are averaged to give one 76 by 236 map, and that recording's mean spectrum over all its good windows is subtracted, so a map shows departure from the recording's own average at each frequency. Windows flagged by the manual QC are removed. The map is then split by state: for the Internal panel only windows labelled Internal keep their values, and so on, and the panels are averaged across recordings. Where no viewer was in that state at a given window the column is blank. The fourth panel in each row collapses time: the mean spectrum of each state's windows per recording, then mean and standard error across recordings.</p>
   <p>States are the two-state conj rule at 0.6 from the log: Internal is PC1 z above 0.6 with deviation z above 0.6; External is PC1 z between -1.5 and -0.6; Neutral is everything else except the far-external tail, which is excluded. Recordings are the pipeline's neural inclusion list. The maps are descriptive; no statistics are computed here.</p>

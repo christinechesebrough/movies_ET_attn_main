@@ -1186,6 +1186,21 @@ legacy directories. Scripts prefixed `attn_explore_14Sep26_`.
   Note: raw robust z is offset negative in every state because the window
   MEAN of log power sits below the continuous MEDIAN used as the z centre;
   the recording-relative subtraction removes that offset.
+- [x] **I21. State-averaged spectra + Int-Ext contrast per frequency (2026-09-15;
+  `attn_explore_14Sep26_spectra_states.py` -> `spectra_states/`; now the
+  DEFAULT view of the spectrograms page).** Time collapsed: heatmap of the
+  mean contact-relative z spectrum per six-region state (x) x frequency
+  (y) per Y7 network, plus Internal (int + far int) minus External (ext +
+  far ext) per frequency via MixedLM over contacts with person intercept,
+  FDR over 76 freqs within network x film; summary panel networks x freq.
+  Gate (Christine): by-timepoint deviation at BOTH ends, internal > 0.6,
+  external <= 0 (knobs GATE_INT_COL / GATE_EXT_COL). Films drawn only with
+  >= 5 windowed recordings (MIN_REC). English (12 rec): Int-Ext positive in
+  delta-beta in DAN (band-mean z 2.1 / 2.8 / 2.2 / 1.5), VN (1.6 / 2.3 /
+  2.6 / 2.0), SMN delta-theta (2.2 / 1.4); gamma / HFA slightly negative in
+  DAN, VN, SMN; DMN / FPN / VAN / LN positive but weaker. Per-frequency FDR
+  mostly not reached at 11-12 persons. Hungarian / Inscapes pending the
+  windowing job. Time-resolved maps kept on the page as secondary.
   Running log for this track: `reports/attn_explore_14Sep26.html`
   (published artifact https://claude.ai/code/artifact/819b3762-7a83-47f9-b495-dde471173f35;
   republish the same file to update it). Entry 1 = feature generation +
